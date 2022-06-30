@@ -17,5 +17,16 @@ namespace DoDad
         internal static void LogInfo(object data) => _logSource.LogInfo(data);
         internal static void LogMessage(object data) => _logSource.LogMessage(data);
         internal static void LogWarning(object data) => _logSource.LogWarning(data);
+
+        internal enum LogLevel
+        {
+            UnityDebug,
+            Debug,
+            Error,
+            Fatal,
+            Info,
+            Message,
+            Warning
+        }
     }
 }
