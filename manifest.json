@@ -2,7 +2,7 @@
 	"name": "XSplitScreen",
 	"version_number": "0.0.1",
 	"website_url": "",
-	"description": "Unreleased",
+	"description": "Enable splitscreen for Risk of Rain 2",
 	"dependencies": [
 		"bbepis-BepInExPack-5.4.9",
 		"RiskofThunder-HookGenPatcher-1.2.1"

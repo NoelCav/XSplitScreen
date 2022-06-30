@@ -1,21 +1,11 @@
 using BepInEx;
-using R2API;
 using R2API.Utils;
 using RoR2;
-using RoR2.UI;
-using On.RoR2.UI;
 using System;
-using System.IO;
-using System.Reflection;
-using System.Text;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
-using UnityEngine.Networking;
 using Rewired;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
-using BepInEx.Configuration;
 using Zio;
 using Rewired.UI;
 using Rewired.Integration.UnityUI;
@@ -39,7 +29,7 @@ namespace DoDad.XSplitScreen
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "0.0.1";
+        public const string PluginVersion = "1.0.0";
 
         private static readonly int MAX_LOCAL_PLAYERS = 4;
 
