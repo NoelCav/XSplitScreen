@@ -1,0 +1,10 @@
+﻿{
+	"name": "XSplitScreen",
+	"version_number": "0.0.1",
+	"website_url": "",
+	"description": "Unreleased",
+	"dependencies": [
+		"bbepis-BepInExPack-5.4.9",
+		"RiskofThunder-HookGenPatcher-1.2.1"
+	]
+}
