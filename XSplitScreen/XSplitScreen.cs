@@ -55,7 +55,7 @@ namespace DoDad
         private static readonly string MSG_ERROR_GENERIC = "[{0}] Unable to continue.";
         private static readonly string MSG_ERROR_SIGN_IN_FIRST = "Please sign in to a user profile before configuring XSplitScreen.";
         private static readonly string MSG_ERROR_PLAYER_COUNT = "Unable to set player count to requested number. Disabling splitscreen.";
-        private static readonly string MSG_ERROR_NETWORK_ACTIVE = "XSplitScreen must be configured outside of a lobby.";
+        private static readonly string MSG_ERROR_NETWORK_ACTIVE = "XSplitScreen must be configured in the main menu.";
         private static readonly string MSG_ERROR_NO_PROFILES = "No profiles detected. Please create a profile before configuring XSplitScreen.";
         private static readonly string MSG_ERROR_INVALID_ARGS = "Invalid arguments. Please type help to see a list of console commands and how to use them.";
         private static readonly string MSG_ERROR_INVALID_PLAYER_RANGE = "A given player index is invalid. Make sure all players are logged in with 'xsplitset'.";
@@ -925,7 +925,7 @@ namespace DoDad
             if (!instance.CanConfigure())
                 return;
 
-            if(Enabled)
+            if(!Enabled)
             {
                 Print(MSG_ERROR_SINGLE_LOCAL_PLAYER);
                 return;
@@ -1011,7 +1011,7 @@ namespace DoDad
         }
         private bool CanConfigure()
         {
-            if (PlatformSystems.lobbyManager.isInLobby)
+            if (string.Compare(SceneManager.GetActiveScene().name, "title") != 0)
             {
                 Print(MSG_ERROR_NETWORK_ACTIVE);
                 return false;

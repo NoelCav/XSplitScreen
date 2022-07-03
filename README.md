@@ -1,18 +1,16 @@
 # Description
 
-A basic splitscreen mod for Risk of Rain 2. If you'd like to help improve support for multiple gamepads please contact me in the Discord server.
+A GUI-based splitscreen mod
 
 # Instructions
 
-Install the plugin and click the 'Enable' button in the XSplitScreen menu.
+1. Install the plugin and click the 'Enable' button in the XSplitScreen menu
 
-If there aren't enough profiles the first profile will be copied.
-
-If there aren't enough controllers only keyboard mode will enable.
+If there aren't enough profiles the first profile will be copied
 
 # Console commands
 
-Commands should only be used in the main menu
+Commands that affect local users can only be used in the main menu
 
 `xsplitset [1-4] [kb]`
 
@@ -20,7 +18,7 @@ Commands should only be used in the main menu
 
 `xsplitswap [1-4] [1-4]`
 
- - Swap profiles
+ - Swap the profiles of two signed in users
 
 `xdevice_status`
 
@@ -29,10 +27,20 @@ Commands should only be used in the main menu
 ## Planned
 
 - Profile selection window
+- Configure controller assignment
+- Multi monitor support
+- Keyboard mode button
 
 ## Limitations
 
-- As of right now the mod only officially supports a single keyboard and mouse player and a single gamepad player. 
+- v1.1.0 Gamepads *should* work - need testers
+- v1.0.0 As of right now the mod only officially supports a single keyboard and mouse player and a single gamepad player
+
+## Known Bugs
+
+- Sometimes the ability to type in the console is broken. Try disabling and enabling the mod again or enabling it with the console open
+- Occasionally loadouts aren't saved to the correct character
+- Gamepad players are unable to use the buttons in the right-hand pane on the character select screen - use the mouse for now
 
 ## Special thanks
 
@@ -42,10 +50,12 @@ Commands should only be used in the main menu
 
 **1.1.0**
 
-- Added XSplitScreen menu
+- Added menu
 - Enable splitscreen for connected devices with one click
-- Bugfixes
 - Temporarily removed the add and remove player buttons
+- Cursors should work for all gamepads now
+- Full gamepad support is being tested
+- Bugfixes
 
 **1.0.0**
 
