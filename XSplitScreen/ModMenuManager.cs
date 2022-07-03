@@ -40,22 +40,27 @@ namespace DoDad.UI
         /// </summary>
         public static void CleanupReferences()
         {
-            GameObject.Destroy(ButtonPrefab);
-            GameObject.Destroy(PopupPrefab);
-            Print("PopupPrefab is null: " + (PopupPrefab == null).ToString());
+            if (ButtonPrefab)
+                GameObject.Destroy(ButtonPrefab);
+            if(PopupPrefab)
+                GameObject.Destroy(PopupPrefab);
+
             ClearScreens();
         }
         public static void CreateReferences()
         {
-            CreateButtonPrefab();
-            CreatePopupPrefab();
+            if (ButtonPrefab == null)
+                CreateButtonPrefab();
+
+            if(PopupPrefab == null)
+                CreatePopupPrefab();
         }
         /// <summary>
         /// Adds a new screen to the main menu and disables it by default.
         /// </summary>
         /// <param name="name"></param>
         /// <returns></returns>
-        public static ModScreen AddScreen(string name)
+        public static ModScreen AddScreen(string name, UILayer layer)
         {
             if(MainMenuController.instance == null)
             {
@@ -66,7 +71,12 @@ namespace DoDad.UI
             if (ActiveScreens.ContainsKey(name))
             {
                 Print(string.Format(MSG_ERROR_SCREEN_EXISTS, name), Log.LogLevel.Warning);
-                return null;
+
+                if(ActiveScreens[name])
+                    if(ActiveScreens[name].transform.parent)
+                        GameObject.Destroy(ActiveScreens[name].transform.parent.gameObject);
+
+                ActiveScreens.Remove(name);
             }
 
             GameObject screenParent = UIResources.CreateUIGameObject(string.Format(TAG_SCREEN, name));
@@ -78,7 +88,7 @@ namespace DoDad.UI
 
             ModScreen newScreen = screenObject.AddComponent<ModScreen>();
 
-            SetupScreen(screenObject);
+            SetupScreen(screenObject, layer);
 
             ActiveScreens.Add(name, newScreen);
 
@@ -106,6 +116,8 @@ namespace DoDad.UI
         {
             //if (ButtonPrefab == null)
             //    CreateButtonPrefab();
+            if(ButtonPrefab == null)
+                CreateReferences();
 
             HGButton newButton = GameObject.Instantiate(ButtonPrefab).GetComponent<HGButton>();
             GameObject newObject = newButton.gameObject;
@@ -137,21 +149,47 @@ namespace DoDad.UI
         }
         public static GameObject CreatePopupPanel(string name, ModScreen screenParent = null)
         {
-            //if (!PopupPrefab)
-                //CreatePopupPrefab();
+            if (PopupPrefab == null)
+                CreateReferences();
 
             GameObject newPopup = GameObject.Instantiate(PopupPrefab);
-            newPopup.name = string.Format(TAG_BUTTON, name);
-            Print("First: " + newPopup.transform.GetChild(0).name);
+            newPopup.name = string.Format(TAG_POPUP, name);
 
             if (screenParent)
             {
-                Print("Setting parent to modScreen");
                 newPopup.transform.SetParent(screenParent.transform);
+
+                RectTransform menuRect = newPopup.GetComponent<RectTransform>();
+                RectTransform templateRect = PopupPrefab.GetComponent<RectTransform>();
+                menuRect.anchorMin = templateRect.anchorMin;
+                menuRect.anchorMax = templateRect.anchorMax;
+                menuRect.offsetMin = templateRect.offsetMin;
+                menuRect.offsetMax = templateRect.offsetMax;
+
+                menuRect.GetChild(0).GetComponent<RectTransform>().anchorMin = templateRect.GetChild(0).GetComponent<RectTransform>().anchorMin;
+                menuRect.GetChild(0).GetComponent<RectTransform>().anchorMax = templateRect.GetChild(0).GetComponent<RectTransform>().anchorMax;
+                menuRect.GetChild(0).GetComponent<RectTransform>().offsetMin = templateRect.GetChild(0).GetComponent<RectTransform>().offsetMin;
+                menuRect.GetChild(0).GetComponent<RectTransform>().offsetMax = templateRect.GetChild(0).GetComponent<RectTransform>().offsetMax;
+
+                UILayerKey layerKey = screenParent.GetComponent<UILayerKey>();
+
+                foreach(HGButton button in screenParent.GetComponentsInChildren<HGButton>(true))
+                {
+                    button.requiredTopLayer = layerKey;
+                }
+                //menuRect.anchorMax = new Vector2(0.75f, 0.5f);// templateRect.anchorMax;
+                //menuRect.anchorMin = new Vector2(0.25f, 0.5f);//;
+                //menuRect.offsetMax = new Vector2(0, 300);
+                //menuRect.offsetMin = new Vector2(0, -300);
+                //menuRect.anchoredPosition = Vector2.zero;
+
+                //menuRect.localScale = Vector3.one * 100f;
+                //menuRect.localScale = Vector3.one;
             }
 
             ResetBindingControllers(newPopup);
-            //newPopup.SetActive(true);
+
+            newPopup.SetActive(true);
 
             return newPopup;
         }
@@ -162,12 +200,13 @@ namespace DoDad.UI
         {
             foreach (KeyValuePair<string, ModScreen> keyPair in ActiveScreens)
             {
-                GameObject.Destroy(keyPair.Value?.gameObject.transform.parent.gameObject);
+                if(keyPair.Value)
+                    GameObject.Destroy(keyPair.Value?.gameObject.transform.parent.gameObject);
             }
 
             ActiveScreens.Clear();
         }
-        private static void SetupScreen(GameObject screen)
+        private static void SetupScreen(GameObject screen, UILayer layer)
         {
             GameObject.Destroy(screen.GetComponent<CanvasRenderer>());
             GameObject template = MainMenuController.instance.extraGameModeMenuScreen.gameObject;
@@ -185,7 +224,7 @@ namespace DoDad.UI
             GraphicRaycaster raycaster = screen.AddComponent<GraphicRaycaster>();
             CanvasGroup canvasGroup = screen.AddComponent<CanvasGroup>();
             UILayerKey layerKey = screen.AddComponent<UILayerKey>();
-
+            
             CursorOpener cursorOpener = screen.AddComponent<CursorOpener>();
             //InputSourceFilter gamepadFilter = screen.AddComponent<InputSourceFilter>();
             //InputSourceFilter keyboardFilter = screen.AddComponent<InputSourceFilter>();
@@ -198,16 +237,16 @@ namespace DoDad.UI
             canvasScaler.referenceResolution = tCanvasScaler.referenceResolution;
             canvasGroup.blocksRaycasts = tCanvasGroup.blocksRaycasts;
             canvas.scaleFactor = 1.3333f;
-            layerKey.layer = tLayerKey.layer;
+
+            layerKey.layer = layer;
             layerKey.onBeginRepresentTopLayer = new UnityEvent();
             layerKey.onEndRepresentTopLayer = new UnityEvent();
 
             screen.AddComponent<MPEventSystemProvider>();
             //screen.AddComponent<MPEventSystemLocator>();
 
-            cursorOpener.forceCursorForGamePad = true;
-
             GameObject duplicateMenu = GameObject.Instantiate(template.transform.GetChild(0).gameObject);
+            duplicateMenu.name = string.Format(TAG_SCREEN, "Main Panel");
             duplicateMenu.transform.SetParent(screen.transform);
 
             OnEnableEvent onEnableGenericMenu = duplicateMenu.transform.GetChild(0).GetComponent<OnEnableEvent>();
@@ -236,6 +275,10 @@ namespace DoDad.UI
             menuRect.anchoredPosition = Vector2.zero;
             menuRect.localScale = Vector3.one;
 
+            screen.GetComponentInChildren<ModScreen>().myMainMenuController = MainMenuController.instance;
+
+            foreach (HGButton button in screen.GetComponentsInChildren<HGButton>())
+                button.requiredTopLayer = layerKey;
 
             screen.SetActive(false);
             //menuRect.localScale = templateRect.localScale;
@@ -268,7 +311,6 @@ namespace DoDad.UI
         }
         private static void CreatePopupPrefab()
         {
-            Print("PopupPrefab is null: " + (PopupPrefab == null).ToString());
             if (PopupPrefab != null)
                 return;
 
@@ -281,41 +323,38 @@ namespace DoDad.UI
             PopupPrefab.name = string.Format(TAG_POPUP, "PopupPrefab");
             GameObject.Destroy(PopupPrefab.GetComponent<HGGamepadInputEvent>());
 
-            PopupPrefab.transform.GetChild(0).gameObject.SetActive(true);
+            //PopupPrefab.transform.GetChild(1).gameObject.SetActive(false);
+
             GameObject.Destroy(PopupPrefab.transform.GetChild(0).gameObject);
 
-            foreach (OnEnableEvent onEnableEvent in PopupPrefab.GetComponentsInChildren<OnEnableEvent>(true))
+            UIJuice juice = PopupPrefab.transform.GetChild(1).GetComponent<UIJuice>();
+            CanvasGroup canvasGroup = PopupPrefab.transform.GetChild(1).GetComponent<CanvasGroup>();
+            canvasGroup.alpha = 1;
+
+            GameObject.Destroy(PopupPrefab.transform.GetChild(1).GetComponent<OnEnableEvent>());
+
+            juice.gameObject.SetActive(false);
+            //OnEnableEvent onEnableEvent = PopupPrefab.transform.GetChild(1).GetComponent<OnEnableEvent>();
+            //onEnableEvent.action.RemoveAllListeners();
+            //onEnableEvent.action.AddListener(juice.TransitionPanFromTop);
+            //onEnableEvent.action.AddListener(juice.TransitionAlphaFadeIn);
+
+            foreach (HGButton button in PopupPrefab.transform.gameObject.GetComponentsInChildren<HGButton>(true))
             {
-                //Print("Clearing enable event");
-                onEnableEvent.action.RemoveAllListeners();
-            }
-            foreach(HGButton button in PopupPrefab.transform.GetComponentInChildren<ContentSizeFitter>().gameObject.GetComponentsInChildren<HGButton>(true))
-            {
-                //Print("Destroying button");
+                if (!button.gameObject.activeSelf)
+                    continue;
+
                 GameObject.Destroy(button.gameObject);
             }
+
             foreach (UserProfileListController controller in PopupPrefab.transform.GetComponentsInChildren<UserProfileListController>(true))
-            {
-                //Print("Destroying controller " + controller.name);
                 GameObject.Destroy(controller);
-            }
+
             foreach (UserProfileListElementController controller in PopupPrefab.transform.GetComponentsInChildren<UserProfileListElementController>(true))
-            {
-                //Print("Destroying element controller " + controller.name);
                 GameObject.Destroy(controller);
-            }
+
             foreach (LanguageTextMeshController languageController in PopupPrefab.GetComponentsInChildren<LanguageTextMeshController>(true))
-            {
-                //Print("Setting language token");
                 languageController.token = CONFIG_TOKEN_DEFAULT;
-            }
-
-            Print("Children: " + PopupPrefab.GetComponentsInChildren<Transform>(true).Length.ToString());
-            foreach (Transform child in PopupPrefab.GetComponentsInChildren<Transform>(true))
-            {
-               // Print("Stored child: " + child.name);
-            }
-
 
             PopupPrefab.SetActive(false);
         }
@@ -437,6 +476,8 @@ namespace DoDad.UI
     {
         private GameObject _worldPosition;
         private Transform _buttonPanel;
+        private List<UIJuice> _onEnableJuice;
+        private List<GameObject> _onEnableObject;
 
         public void SetCameraPosition(Vector3 position, Quaternion forward)
         {
@@ -451,8 +492,13 @@ namespace DoDad.UI
 
             desiredCameraTransform = _worldPosition.transform;
 
+            _onEnableJuice = new List<UIJuice>();
+            _onEnableObject = new List<GameObject>();
+
             onEnter = new UnityEvent();
             onExit = new UnityEvent();
+
+            XSplitScreen.OnLocalPlayerCount.AddListener(OnEnableUpdate);
         }
         public void AddButton(GameObject newObject)
         {
@@ -464,7 +510,44 @@ namespace DoDad.UI
             newObject.transform.SetParent(_buttonPanel);
             newObject.transform.SetSiblingIndex(1);
             newObject.transform.localScale = Vector3.one;
-            newObject.GetComponent<HGButton>().hoverLanguageTextMeshController = _buttonPanel.transform.GetChild(0).gameObject.GetComponentInChildren<LanguageTextMeshController>();
+            HGButton button = newObject.GetComponent<HGButton>();
+            button.hoverLanguageTextMeshController = _buttonPanel.transform.GetChild(0).gameObject.GetComponentInChildren<LanguageTextMeshController>();
+            button.requiredTopLayer = GetComponent<UILayerKey>();
+            Debug.Log($"Set layer key '{GetComponent<UILayerKey>().layer.name}' for '{button.name}'");
+        }
+        public void AddJuiceOnEnable(UIJuice element)
+        {
+            _onEnableJuice.Add(element);
+        }
+        public void AddObjectOnEnable(GameObject obj)
+        {
+            _onEnableObject.Add(obj);
+        }
+        private void OnEnableUpdate()
+        {
+            foreach (UIJuice child in _onEnableJuice)
+            {
+                if(XSplitScreen.Enabled)
+                {
+                    child.gameObject.SetActive(true);
+                    child.TransitionAlphaFadeIn();
+                    child.TransitionPanFromTop();
+                }
+                else
+                {
+                    child.TransitionAlphaFadeOut();
+                    child.TransitionPanToBottom();
+                }
+            }
+
+            foreach(GameObject obj in _onEnableObject)
+            {
+                obj.SetActive(XSplitScreen.Enabled);
+            }
+
+            //GetComponent<CursorOpener>().forceCursorForGamePad = XSplitScreen.XSplitScreen.Enabled;
+
+            
         }
     }
     public class ModLanguageTextMesh : LanguageTextMeshController
@@ -510,19 +593,19 @@ namespace DoDad.UI.Components
         }
         private void OnEnable()
         {
-            XSplitScreen.XSplitScreen.OnLocalPlayerCount.AddListener(UpdateToken);
+            XSplitScreen.OnLocalPlayerCount.AddListener(UpdateToken);
         }
         private void OnDisable()
         {
-            XSplitScreen.XSplitScreen.OnLocalPlayerCount.RemoveListener(UpdateToken);
+            XSplitScreen.OnLocalPlayerCount.RemoveListener(UpdateToken);
         }
         public void UpdateToken()
         {
             if (!_controller)
                 Initialize();
-            Debug.Log("Updating Token");
-            _controller.token = XSplitScreen.XSplitScreen.Enabled ? OnEnabledToken : OnDisabledToken;
-            _button.hoverToken = XSplitScreen.XSplitScreen.Enabled ? OnEnabledHoverToken : OnDisabledHoverToken;
+
+            _controller.token = XSplitScreen.Enabled ? OnEnabledToken : OnDisabledToken;
+            _button.hoverToken = XSplitScreen.Enabled ? OnEnabledHoverToken : OnDisabledHoverToken;
         }
     }
 }

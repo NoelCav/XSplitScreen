@@ -1,6 +1,6 @@
 ﻿{
 	"name": "XSplitScreen",
-	"version_number": "0.0.1",
+	"version_number": "1.1.0-alpha.1",
 	"website_url": "",
 	"description": "Enable splitscreen for Risk of Rain 2",
 	"dependencies": [

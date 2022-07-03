@@ -10,7 +10,6 @@ using Zio;
 using Rewired.UI;
 using Rewired.Integration.UnityUI;
 using UnityEngine.EventSystems;
-using Facepunch.Steamworks;
 using UnityEngine.Events;
 using DoDad.UI;
 using R2API;
@@ -20,10 +19,10 @@ using RoR2.UI;
 /// Influenced by iDeathHD's FixedSplitScreen mod
 /// https://thunderstore.io/package/xiaoxiao921/FixedSplitscreen/
 /// </summary>
-namespace DoDad.XSplitScreen
+namespace DoDad
 {
     [BepInDependency(R2API.R2API.PluginGUID)]
-    [R2APISubmoduleDependency(new string[] { "CommandHelper", "LanguageAPI"})]
+    [R2APISubmoduleDependency(new string[] { "CommandHelper", "LanguageAPI" })]
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
     public class XSplitScreen : BaseUnityPlugin
@@ -32,10 +31,12 @@ namespace DoDad.XSplitScreen
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.1.0";
 
         private static readonly int MAX_LOCAL_PLAYERS = 4;
 
+        private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN = "XSPLITSCREEN_CONFIG_HEADER";
+        private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_STRING = "Under Construction";
         private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN = "XSPLITSCREEN_ENABLE_HOVER";
         private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_STRING = "Turn on XSplitScreen";
         private static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN = "XSPLITSCREEN_DISABLE_HOVER";
@@ -49,43 +50,45 @@ namespace DoDad.XSplitScreen
         private static readonly string MSG_HOVER_TOKEN = "TITLE_XSPLITSCREEN_DESC";
         private static readonly string MSG_HOVER_STRING = "Modify splitscreen settings.";
 
-        private static readonly string MSG_TAG_PLUGIN = "XSS";
-        private static readonly string MSG_ERROR_MENU_CONTROLLER_CREATION = "Unable to create XMenuController - only console commands will work.";
+        private static readonly string MSG_TAG_PLUGIN = "[XSS] {0}";
         private static readonly string MSG_ERROR_SINGLE_LOCAL_PLAYER = "There is only 1 local player signed in.";
-        private static readonly string MSG_ERROR_GENERIC = "Unable to continue.";
+        private static readonly string MSG_ERROR_GENERIC = "[{0}] Unable to continue.";
         private static readonly string MSG_ERROR_SIGN_IN_FIRST = "Please sign in to a user profile before configuring XSplitScreen.";
-        private static readonly string MSG_ERROR_PLAYER_COUNT = "Unable to set player count to requested number.";
+        private static readonly string MSG_ERROR_PLAYER_COUNT = "Unable to set player count to requested number. Disabling splitscreen.";
         private static readonly string MSG_ERROR_NETWORK_ACTIVE = "XSplitScreen must be configured outside of a lobby.";
         private static readonly string MSG_ERROR_NO_PROFILES = "No profiles detected. Please create a profile before configuring XSplitScreen.";
         private static readonly string MSG_ERROR_INVALID_ARGS = "Invalid arguments. Please type help to see a list of console commands and how to use them.";
         private static readonly string MSG_ERROR_INVALID_PLAYER_RANGE = "A given player index is invalid. Make sure all players are logged in with 'xsplitset'.";
-        private static readonly string MSG_ERROR_NO_CONTROLLERS = "Not enough controllers exist to assign to the requested number of players.";
-        private static readonly string MSG_INFO_PLAYER_COUNT_CHANGED = "Player count set to: ";
-        private static readonly string MSG_INFO_PLAYER_COUNT_CLAMPED = "Number requested is outside the valid range. Player count set to: ";
-        private static readonly string MSG_INFO_KEYBOARD_AUTOENABLE = "Enabling keyboard by default. To disable add 'nokb' to 'xsplitplayers'. WARNING: Not fully tested!";
+        private static readonly string MSG_INFO_KEYBOARD_ONLY = "Not enough controllers. Only keyboard mode is available.";
+        private static readonly string MSG_INFO_PLAYER_COUNT_CLAMPED = "Requested invalid number of players ({0}). Trying '{1}'.";
         private static readonly string MSG_INFO_ENTER = "XSplitScreen loaded. Type help to see how to use the 'xsplitset' command.";
         private static readonly string MSG_INFO_EXIT = "Attempting to exit: your controllers may or may not work until you restart the game.";
-        private static readonly string MSG_INFO_KEYBOARD_STATUS = "Keyboard and mouse {0}";
-        private static readonly string MSG_UI_MAIN_MENU = "Local Players";
+        private static readonly string MSG_INFO_KEYBOARD_STATUS = "Keyboard mode requested";
+        private static readonly string MSG_INFO_POTENTIAL_PLAYERS = "{0} potential users detected";
 
         public static XSplitScreen instance;
-        public static bool DisableKeyboard
+        /// <summary>
+        /// Called when the user clicks on Logbook or Singleplayer (should be any scene change)
+        /// </summary>
+        public static UnityAction DisableMenu;
+        public static UnityEvent OnLocalPlayerCount;
+        public static bool Enabled => LocalPlayerCount > 1;
+        public static int MaxPlayers
         {
             get
             {
-                return instance._disableKeyboard;
-            }
-            set
-            {
-                instance._disableKeyboard = value;
-                Print(string.Format(MSG_INFO_KEYBOARD_STATUS, value ? "DISABLED" : "ENABLED"));
+                int potentialPlayers = instance.EstimateJoysticks();
+
+                if (potentialPlayers == 1)
+                    if (instance._keyboardModeOnly)
+                        potentialPlayers++;
+
+                return Mathf.Min(potentialPlayers, MAX_LOCAL_PLAYERS);
             }
         }
-        public static UnityEvent OnLocalPlayerCount;
-        public static bool Enabled => LocalPlayerCount > 1;
         public static int LocalPlayerCount
         {
-            set
+            protected set
             {
                 if (OnLocalPlayerCount == null)
                     OnLocalPlayerCount = new UnityEvent();
@@ -98,16 +101,23 @@ namespace DoDad.XSplitScreen
                 return _localPlayerCount;
             }
         }
-
+        public static bool KeyboardMode => instance._keyboardModeOnly || (_localPlayerCount == 1) || (instance._keyboardOptional && instance._requestKeyboard);
+        
         private static int _localPlayerCount = 1;
 
+        private Coroutine WaitFormenuLoad;
         private RoR2.UI.MPEventSystem _lastEventSystem;
         private HGButton _titleButton;
         private GameObject _controllerAssignmentWindow;
 
-        private int _playerBeginIndex = 1;
+        private int _playerBeginIndex => KeyboardMode ? 1 : 2;
+        private int _retryCounter = 0;
         private bool _disableKeyboard = false;
-        private bool _devMode = true;
+        private bool _devMode = false;
+        private bool _keyboardModeOnly = false;
+        private bool _keyboardOptional = false;
+        private bool _requestKeyboard = false;
+        private bool _enteredMenu = false;
         #endregion
 
         #region Unity Methods
@@ -117,12 +127,11 @@ namespace DoDad.XSplitScreen
                 Destroy(this);
 
             instance = this;
+            DisableMenu = new UnityAction(XSplitScreen.instance.CleanupReferences);
             LocalPlayerCount = 1;
 
             Log.Init(Logger);
             CommandHelper.AddToConsoleWhenReady();
-
-            ModMenuManager.CreateReferences();
 
             TogglePersistentHooks(true);
             Print(MSG_INFO_ENTER);
@@ -137,17 +146,20 @@ namespace DoDad.XSplitScreen
         }
         public void Start()
         {
-            DevModeTriggers(true);
+            DevModeTriggers(_devMode);
+            OnLocalPlayerCount.AddListener(UpdateCursorStatus);
         }
         #endregion
 
         #region Public Methods
         public bool SetLocalPlayerCount(int localPlayerCount, bool forceKeyboardSupport = false)
         {
-            if (localPlayerCount < 1 || localPlayerCount > MAX_LOCAL_PLAYERS)
+            int maxPlayers = MaxPlayers;
+
+            if (localPlayerCount < 1 || localPlayerCount > maxPlayers)
             {
-                localPlayerCount = Mathf.Clamp(localPlayerCount, 1, MAX_LOCAL_PLAYERS);
-                Print(MSG_INFO_PLAYER_COUNT_CLAMPED + localPlayerCount.ToString());
+                Print(string.Format(MSG_INFO_PLAYER_COUNT_CLAMPED, localPlayerCount, Mathf.Clamp(localPlayerCount, 1, maxPlayers)), Log.LogLevel.Message);
+                localPlayerCount = Mathf.Clamp(localPlayerCount, 1, maxPlayers);
             }
 
             if (localPlayerCount == LocalPlayerCount)
@@ -159,27 +171,57 @@ namespace DoDad.XSplitScreen
 
             success &= LogInProfiles();
 
-            if(!Enabled)
+            //if(!Enabled)
                 success &= ToggleHooks(success);
 
             success &= ToggleControllers(success);
-
+            OutputPlayerInputToLog();
             if (!success)
-                Print(MSG_ERROR_PLAYER_COUNT);
+            {
+                Print(MSG_ERROR_PLAYER_COUNT, Log.LogLevel.Warning);
 
-            return success;
+                _retryCounter++;
+
+                if (_retryCounter > 2)
+                    return false;
+
+                return SetLocalPlayerCount(1);
+            }
+            else
+            {
+                _retryCounter = 0;
+                return success;
+            }
         }
         #endregion
 
         #region Private Methods
         private void DevModeTriggers(bool enable)
         {
+            if (!enable)
+                return;
+
+            Print("DevMode");
             ToggleModMenu(enable);
+            AddMainMenuCalls();
+        }
+        private void TogglePersistentHooks(bool status)
+        {
+            if(status)
+            {
+                On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter += BaseMainMenuScreen_OnEnter;
+
+                SceneManager.activeSceneChanged += SceneManager_activeSceneChanged;
+            }
+            else
+            {
+                On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter -= BaseMainMenuScreen_OnEnter;
+
+                SceneManager.activeSceneChanged -= SceneManager_activeSceneChanged;
+            }
         }
         private void ToggleModMenu(bool enable) // Call this function when the title screen is loaded, maybe on scene change?
         {
-            // _titleButton should be created only when player count is over 1
-
             if(enable)
             {
                 if (_titleButton == null)
@@ -191,18 +233,13 @@ namespace DoDad.XSplitScreen
                     LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN, MSG_SPLITSCREEN_DISABLE_HOVER_STRING);
                     LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_TOKEN, MSG_SPLITSCREEN_ENABLE_STRING);
                     LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_TOKEN, MSG_SPLITSCREEN_DISABLE_STRING);
-                    /*
-                     * MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN = "XSPLITSCREEN_ENABLE_HOVER";
-        private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_STRING = "Turn on XSplitScreen";
-        private static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN = "XSPLITSCREEN_DISABLE_HOVER";
-        private static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_STRING = "Turn off XSplitScreen";
-        private static readonly string MSG_SPLITSCREEN_ENABLE_TOKEN = "XSPLITSCREEN_ENABLE";
-        private static readonly string MSG_SPLITSCREEN_ENABLE_STRING = "Enable";
-        private static readonly string MSG_SPLITSCREEN_DISABLE_TOKEN = "XSPLITSCREEN_DISABLE";
-        private static readonly string MSG_SPLITSCREEN_DISABLE_STRING = "Disable";
-                    */
+                    LanguageAPI.Add(MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN, MSG_SPLITSCREEN_CONFIG_HEADER_STRING);
 
-                    ModScreen userControllerScreen = ModMenuManager.AddScreen(PluginName); // Screen should be created when entering title and destroyed when exiting 
+                    UILayer newLayer = ScriptableObject.CreateInstance<UILayer>();
+                    newLayer.name = PluginName;
+                    newLayer.priority = 10;
+
+                    ModScreen userControllerScreen = ModMenuManager.AddScreen(PluginName, newLayer); 
                     Quaternion forward = Quaternion.identity;
 
                     forward = Quaternion.AngleAxis(20f, Vector3.up);
@@ -210,13 +247,12 @@ namespace DoDad.XSplitScreen
 
                     userControllerScreen.SetCameraPosition(new Vector3(-10.8f, 601.2f, -424.2f), forward);
 
-
                     _titleButton = ModMenuManager.CreateHGButton("XSplitScreen", MSG_TITLE_BUTTON_TOKEN, Menu.Title);
                     _titleButton.hoverToken = MSG_HOVER_TOKEN;
                     _titleButton.updateTextOnHover = true;
                     _titleButton.uiClickSoundOverride = "";
                     _titleButton.submitOnPointerUp = true;
-                    _titleButton.onClick.AddListener(delegate { RoR2.UI.MainMenu.MainMenuController.instance.SetDesiredMenuScreen(userControllerScreen); });
+                    _titleButton.onClick.AddListener(OnClickMainTitleButton);
 
                     HGButton enableSplitScreenButton = ModMenuManager.CreateHGButton("EnableSplitScreen", MSG_TITLE_BUTTON_TOKEN, Menu.None, userControllerScreen);
                     enableSplitScreenButton.hoverToken = MSG_HOVER_TOKEN;
@@ -224,6 +260,9 @@ namespace DoDad.XSplitScreen
                     enableSplitScreenButton.submitOnPointerUp = true;
                     enableSplitScreenButton.uiClickSoundOverride = "";
                     enableSplitScreenButton.onClick.AddListener(OnClickToggleSplitScreen);
+                    enableSplitScreenButton.defaultFallbackButton = true;
+                    enableSplitScreenButton.requiredTopLayer = userControllerScreen.GetComponent<UILayerKey>();
+
                     DoDad.UI.Components.SplitscreenTextMeshController component = enableSplitScreenButton.gameObject.AddComponent<DoDad.UI.Components.SplitscreenTextMeshController>();
                     component.OnEnabledToken = MSG_SPLITSCREEN_DISABLE_TOKEN;
                     component.OnEnabledHoverToken = MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN;
@@ -234,148 +273,39 @@ namespace DoDad.XSplitScreen
             }
             else
             {
-                Destroy(_titleButton?.gameObject);
+                if (_titleButton)
+                    Destroy(_titleButton?.gameObject);
+
+                if (instance._controllerAssignmentWindow)
+                    instance._controllerAssignmentWindow = null;
+
                 ModMenuManager.CleanupReferences();
             }
         }
         private void CreateControllerAssignmentWindow()
         {
-            _controllerAssignmentWindow = ModMenuManager.CreatePopupPanel("ControllerAssignment", ModMenuManager.ActiveScreens[PluginName]);
-        }
-        private void CleanupReferences()
-        {
-            ToggleModMenu(false);
-        }
-        private void TogglePersistentHooks(bool status)
-        {
-            if(status)
+            if (_controllerAssignmentWindow)
+                return;
+
+            ModScreen screen = ModMenuManager.ActiveScreens[PluginName];
+            _controllerAssignmentWindow = ModMenuManager.CreatePopupPanel("ControllerAssignment", screen);
+
+            GameObject onEnableObject = _controllerAssignmentWindow.transform.GetChild(0).gameObject;
+            onEnableObject.SetActive(Enabled);
+
+            screen.AddObjectOnEnable(onEnableObject);
+
+            foreach(LanguageTextMeshController controller in _controllerAssignmentWindow.GetComponentsInChildren<LanguageTextMeshController>(true))
             {
-                On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter += BaseMainMenuScreen_OnEnter;
+                if (string.Compare(controller.name, "HeaderText") == 0)
+                    controller.token = MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN;
             }
-            else
-            {
-                On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter -= BaseMainMenuScreen_OnEnter;
-            }
-        }
-        private bool ToggleControllers(bool valid = true)
-        {
-            if (!valid)
-                return false;
-
-            if(!Enabled)
-            {
-                foreach(Controller controller in ReInput.controllers.Controllers)
-                {
-                    LocalUserManager.GetFirstLocalUser().inputPlayer.controllers.AddController(controller, false);
-                }
-                
-
-                //ConDeviceStatus(new ConCommandArgs());
-                return true;
-            }
-
-            //ConDeviceStatus(new ConCommandArgs());
-
-            return true;
-
-            List<Controller> controllerList = new List<Controller>();
-
-            foreach (Controller controller in ReInput.controllers.Controllers)
-            {
-                controllerList.Add(controller);
-            }
-
-            Controller controller1 = controllerList[controllerList.Count - 1];
-
-            if (Enabled)
-            {
-                if (controllerList.Count - 2 < LocalPlayerCount - 1)
-                {
-                    Print(MSG_ERROR_NO_CONTROLLERS);
-                    return false;
-                }
-
-                controllerList.Reverse();
-
-                for (int e = 0; e < LocalUserManager.readOnlyLocalUsersList.Count; e++)
-                {
-                    if (controllerList.Count == 0)
-                    {
-                        Print(MSG_ERROR_NO_CONTROLLERS);
-                        return false;
-                    }
-
-                    LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.ClearAllControllers();
-
-                    if (e == 0)
-                    {
-                        if (!DisableKeyboard)
-                        {
-                            LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 2], false);
-                            LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
-                        }
-
-                        controllerList.RemoveRange(controllerList.Count - 2, 2);
-
-                        if (DisableKeyboard)
-                        {
-                            LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
-                            controllerList.RemoveAt(controllerList.Count - 1);
-                        }
-                    }
-                    else
-                    {
-                        LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
-                        controllerList.RemoveAt(controllerList.Count - 1);
-                    }
-                }
-            }
-            return true;
-        }
-        private bool ToggleHooks(bool valid = true)
-        {
-            if(!valid)
-            {
-                Print(MSG_ERROR_GENERIC);
-                return false;
-            }
-
-            if(Enabled)
-            {
-                On.RoR2.LocalCameraEffect.OnUICameraPreCull += LocalCameraEffect_OnUICameraPreCull; // entire, req
-                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal; // entire, req
-                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData += LoadoutPanelController_UpdateDisplayData; // entire, req
-                On.RoR2.UI.MPButton.Update += MPButton_Update; // entire, req
-                On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick; // unaffected, req
-                On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
-                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
-                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // yes
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // yes
-                On.RoR2.UI.CharacterSelectController.OnEnable += CharacterSelectController_OnEnable; // yes
-                On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon; // yes
-            }
-            else
-            {
-                On.RoR2.LocalCameraEffect.OnUICameraPreCull -= LocalCameraEffect_OnUICameraPreCull;
-                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal -= CombatHealthBarViewer_SetLayoutHorizontal;
-                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData -= LoadoutPanelController_UpdateDisplayData;
-                On.RoR2.UI.MPButton.Update -= MPButton_Update;
-                On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
-                On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
-                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
-                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
-                On.RoR2.UI.CharacterSelectController.OnEnable -= CharacterSelectController_OnEnable;
-                On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
-            }
-            
-            return true;
         }
         private bool LogInProfiles(UserProfile[] currentProfiles = null)
         {
             if(!LocalUserManager.isAnyUserSignedIn)
             {
-                Print(MSG_ERROR_SIGN_IN_FIRST);
+                Print(MSG_ERROR_SIGN_IN_FIRST, Log.LogLevel.Message);
                 return false;
             }
 
@@ -431,13 +361,211 @@ namespace DoDad.XSplitScreen
                     player = ReInput.players.GetPlayer(_playerBeginIndex + index),
                     profile = userProfileList[index]
                 };
-
+                Print($"Added {ReInput.players.GetPlayer(_playerBeginIndex + index).name}");
             }
 
             LocalUserManager.SetLocalUsers(initializationArray);
             On.RoR2.ViewablesCatalog.AddNodeToRoot -= ViewablesCatalog_AddNodeToRoot;
 
             return true;
+        }
+        private bool ToggleHooks(bool valid = true)
+        {
+            if(!valid)
+            {
+                Print(MSG_ERROR_GENERIC);
+                return false;
+            }
+
+            if(Enabled)
+            {
+                //On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
+               // On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
+                //On.RoR2.UI.CharacterSelectController.RebuildLocal += CharacterSelectController_RebuildLocal;
+                //On.RoR2.UI.CharacterSelectController.OnLoadoutChangedGlobal += CharacterSelectController_OnLoadoutChangedGlobal;
+                On.RoR2.LocalCameraEffect.OnUICameraPreCull += LocalCameraEffect_OnUICameraPreCull; // entire, req
+                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal; // entire, req
+                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData += LoadoutPanelController_UpdateDisplayData; // entire, req
+                On.RoR2.UI.MPButton.Update += MPButton_Update; // entire, req
+                On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick; // unaffected, req
+                On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // yes
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // yes
+                On.RoR2.UI.CharacterSelectController.OnEnable += CharacterSelectController_OnEnable; // no
+                On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon; // yes
+            }
+            else
+            {
+                Print("DISABLING ALL HOOKS");
+                //On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
+                //On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
+                //On.RoR2.UI.CharacterSelectController.RebuildLocal -= CharacterSelectController_RebuildLocal;
+                //On.RoR2.UI.CharacterSelectController.OnLoadoutChangedGlobal -= CharacterSelectController_OnLoadoutChangedGlobal;
+                On.RoR2.LocalCameraEffect.OnUICameraPreCull -= LocalCameraEffect_OnUICameraPreCull;
+                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal -= CombatHealthBarViewer_SetLayoutHorizontal;
+                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData -= LoadoutPanelController_UpdateDisplayData;
+                On.RoR2.UI.MPButton.Update -= MPButton_Update;
+                On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
+                On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
+                On.RoR2.UI.CharacterSelectController.OnEnable -= CharacterSelectController_OnEnable; 
+                On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
+            }
+            
+            return true;
+        }
+        private bool ToggleControllers(bool valid = true)
+        {
+            if (!valid)
+                return false;
+
+            if(!Enabled)
+            {
+                ReInput.controllers.AutoAssignJoysticks();
+                return true;
+            }
+
+            List<Controller> joystickList = new List<Controller>();
+
+            foreach (Controller controller in ReInput.controllers.Controllers)
+            {
+                if(controller.type == ControllerType.Joystick || KeyboardMode)
+                    joystickList.Add(controller);
+            }
+
+            //if (controllerList.Count - 2 < LocalPlayerCount - 1)
+            //{
+            //    Print(MSG_ERROR_NO_CONTROLLERS);
+            //    return false;
+            //}
+
+            joystickList.Reverse();
+
+            LocalUserManager.localUsersList[0].inputPlayer.controllers.ClearAllControllers();
+
+            if(KeyboardMode)
+            {
+                LocalUserManager.localUsersList[0].inputPlayer.controllers.ClearAllControllers();
+                LocalUserManager.localUsersList[0].inputPlayer.controllers.AddController(joystickList[joystickList.Count - 1], false);
+                LocalUserManager.localUsersList[0].inputPlayer.controllers.AddController(joystickList[joystickList.Count - 2], false);
+
+                joystickList.RemoveRange(joystickList.Count - 2, 2);
+            }
+
+            for(int e = KeyboardMode ? 1 : 0; e < LocalUserManager.readOnlyLocalUsersList.Count; e++)
+            {
+                if(joystickList.Count == 0)
+                {
+                    Print(string.Format(MSG_ERROR_GENERIC, "01"), Log.LogLevel.Error);
+                    return false;
+                }
+
+                LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.ClearAllControllers();
+
+                LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(joystickList[joystickList.Count - 1], false);
+                joystickList.RemoveAt(joystickList.Count - 1);
+            }
+
+            return true;
+            /*
+            for (int e = 0; e < LocalUserManager.readOnlyLocalUsersList.Count; e++)
+            {
+                if (controllerList.Count == 0)
+                {
+                    Print(MSG_ERROR_NO_CONTROLLERS);
+                    return false;
+                }
+
+                LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.ClearAllControllers();
+
+                if (e == 0)
+                {
+                    if (!DisableKeyboard)
+                    {
+                        LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 2], false);
+                        LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
+                    }
+
+                    controllerList.RemoveRange(controllerList.Count - 2, 2);
+
+                    if (DisableKeyboard)
+                    {
+                        LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
+                        controllerList.RemoveAt(controllerList.Count - 1);
+                    }
+                }
+                else
+                {
+                    LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.AddController(controllerList[controllerList.Count - 1], false);
+                    controllerList.RemoveAt(controllerList.Count - 1);
+                }
+            }
+            */
+            return true;
+        }
+        private int EstimateJoysticks()
+        {
+            int potentialUsers = 0;
+
+            int totalJoysticks = 0;
+            int keyboardMouse = 0;
+
+            _keyboardModeOnly = false;
+            _keyboardOptional = false;
+
+            foreach(Controller controller in ReInput.controllers.Controllers)
+            {
+                switch(controller.identifier.controllerType)
+                {
+                    case ControllerType.Joystick:
+                        totalJoysticks++;
+                        break;
+                    case ControllerType.Keyboard:
+                        keyboardMouse++;
+                        break;
+                    case ControllerType.Mouse:
+                        keyboardMouse++;
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if(totalJoysticks == 1 && keyboardMouse == 2)
+            {
+                Print(MSG_INFO_KEYBOARD_ONLY, Log.LogLevel.Message);
+                _keyboardModeOnly = true;
+            }
+
+            if(totalJoysticks > 1 && keyboardMouse == 2)
+            {
+                _keyboardOptional = true;
+            }
+
+            potentialUsers += totalJoysticks;
+            /*
+            if (potentialUsers > 1 && keyboardMouse == 2)
+                KeyboardSplitscreenAvailable = true;
+            */
+            return potentialUsers;
+        }
+        private void AddMainMenuCalls()
+        {
+            GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
+            GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
+        }
+        private void OnClickToggleKeyboard()
+        {
+            _requestKeyboard = !_requestKeyboard;
+        }
+        public void CleanupReferences()
+        {
+            GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
+            GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
+            ToggleModMenu(false);
         }
         private void SwapProfiles(int firstPlayerIndex, int secondPlayerIndex)
         {
@@ -453,37 +581,96 @@ namespace DoDad.XSplitScreen
 
             LogInProfiles(currentProfiles);
         }
+        private void OutputPlayerInputToLog()
+        {
+
+            Print("LocalUsers");
+            foreach (LocalUser user in LocalUserManager.localUsersList)
+            {
+                Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
+                foreach (Controller controller in user.inputPlayer.controllers.Controllers)
+                {
+                    Print($" -- {controller.identifier.controllerType.ToString()} ({controller.name.ToString()})");
+                }
+            }
+
+            Print("ReInput Players");
+            foreach (Player player in ReInput.players.AllPlayers)
+            {
+                Print($" - {player.name}");
+                foreach (Controller controller in player.controllers.Controllers)
+                {
+                    Print($" -- {controller.templateCount.ToString()} ({controller.name})");
+                    Print($" --- {controller.mapTypeString} ({controller.buttonCount})");
+                }
+            }
+        }
+        private void OutputPlayerBindingsToLog()
+        {
+            foreach (LocalUser user in LocalUserManager.localUsersList)
+            {
+                Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
+                foreach (Controller controller in user.inputPlayer.controllers.Controllers)
+                {
+                    Print($" -- {controller.mapTypeString} ({controller.name.ToString()})");
+
+                    if(controller.type == ControllerType.Joystick || controller.type == ControllerType.Custom)
+                    {
+
+                    }
+                }
+            }
+        }
         #endregion
 
         #region Event Handlers / Hooks
-        public static void OnClickToggleSplitScreen()
+        private void OnClickMainTitleButton()
         {
-            if(!Enabled)
+            CreateControllerAssignmentWindow();
+            RoR2.UI.MainMenu.MainMenuController.instance.SetDesiredMenuScreen(ModMenuManager.ActiveScreens[PluginName]);
+        }
+        private static void OnClickToggleSplitScreen()
+        {
+            if (!Enabled)
             {
-                XSplitScreen.instance.SetLocalPlayerCount(2);
-                instance.CreateControllerAssignmentWindow();
+                int max = MaxPlayers;
+                Print(string.Format(MSG_INFO_POTENTIAL_PLAYERS, max));
+                XSplitScreen.instance.SetLocalPlayerCount(max);
             }
             else
             {
                 XSplitScreen.instance.SetLocalPlayerCount(1);
-                GameObject.Destroy(instance._controllerAssignmentWindow);
             }
         }
-        public static void AddPlayer()
+        private void UpdateCursorStatus()
         {
-            instance.SetLocalPlayerCount(LocalPlayerCount + 1);
+            CursorOpener[] openers = GameObject.FindObjectsOfType<CursorOpener>();
+
+            foreach (CursorOpener opener in openers)
+                opener.forceCursorForGamePad = Enabled;
+
+            if (!XSplitScreen.Enabled)
+            {
+                foreach (MPEventSystem instance in MPEventSystem.instancesList)
+                {
+                    instance.SetSelectedGameObject(null);
+                }
+            }
         }
-        public static void RemovePlayer()
+        private void SceneManager_activeSceneChanged(Scene arg0, Scene arg1)
         {
-            instance.SetLocalPlayerCount(LocalPlayerCount - 1);
+            if (string.Compare(arg1.name, "title") == 0)
+            {
+                StopCoroutine(WaitFormenuLoad);
+                WaitFormenuLoad = StartCoroutine(WaitForMenuCoroutine());
+            }
+
+            UpdateCursorStatus();
         }
-        
         private void BaseMainMenuScreen_OnEnter(On.RoR2.UI.MainMenu.BaseMainMenuScreen.orig_OnEnter orig, RoR2.UI.MainMenu.BaseMainMenuScreen self, RoR2.UI.MainMenu.MainMenuController mainMenuController)
         {
             orig(self, mainMenuController);
-
-            if (ModMenuManager.ActiveScreens.Count == 0)
-                ToggleModMenu(true);
+            _enteredMenu = true;
         }
         private void ViewablesCatalog_AddNodeToRoot(On.RoR2.ViewablesCatalog.orig_AddNodeToRoot orig, ViewablesCatalog.Node node)
         {
@@ -521,7 +708,7 @@ namespace DoDad.XSplitScreen
             UserProfile userProfile = _lastEventSystem?.localUser?.userProfile;
             NetworkUser currentNetworkUser = _lastEventSystem?.localUser?.currentNetworkUser;
 
-            BodyIndex bodyIndex = (bool)((UnityEngine.Object)currentNetworkUser) ? currentNetworkUser.bodyIndexPreference : BodyIndex.None;
+            BodyIndex bodyIndex = ((UnityEngine.Object)currentNetworkUser) ? currentNetworkUser.bodyIndexPreference : BodyIndex.None;
             self.SetDisplayData(new RoR2.UI.LoadoutPanelController.DisplayData()
             {
                 userProfile = userProfile,
@@ -543,14 +730,11 @@ namespace DoDad.XSplitScreen
             if(!self.eventSystem || self.eventSystem.player == null)
                 return;
 
-            if(self.eventSystem.localUser.userProfile.name.Contains("1"))
-            {
-                Print("Found player 2");
-            }
             foreach(RoR2.UI.MPEventSystem eventSystem in RoR2.UI.MPEventSystem.readOnlyInstancesList)
             {
                 if(eventSystem && eventSystem.currentSelectedGameObject == self.gameObject && ((eventSystem.player.GetButtonDown(4) && !self.disableGamepadClick) || eventSystem.player.GetButtonDown(14)))
                 {
+                    Print($"({eventSystem.name}) {eventSystem.localUser?.userProfile?.name} just clicked on {self.name}");
                     _lastEventSystem = eventSystem;
                     self.InvokeClick();
                 }
@@ -566,16 +750,18 @@ namespace DoDad.XSplitScreen
         }
         private void MPButton_OnPointerClick(On.RoR2.UI.MPButton.orig_OnPointerClick orig, RoR2.UI.MPButton self, PointerEventData eventData)
         {
-            _lastEventSystem = (RoR2.UI.MPEventSystem)eventData.currentInputModule.eventSystem;
+            _lastEventSystem = (eventData.currentInputModule.eventSystem as RoR2.UI.MPEventSystem);
+            Print($"{_lastEventSystem.localUser} clicked on {self.name}");
             orig(self, eventData);
         }
         private void CharacterSelectController_OnEnable(On.RoR2.UI.CharacterSelectController.orig_OnEnable orig, RoR2.UI.CharacterSelectController self)
         {
             orig(self);
-            self.GetComponent<RoR2.UI.CursorOpener>().forceCursorForGamePad = true;
+            //Print("Forcing cursor");
+            //self.GetComponent<RoR2.UI.CursorOpener>().forceCursorForGamePad = true;
         }
         private object MPInputModule_GetMousePointerEventData(On.RoR2.UI.MPInputModule.orig_GetMousePointerEventData orig, RoR2.UI.MPInputModule self, int playerId, int mouseIndex)
-        {
+        { // TODO don't need to replace entire method
             IMouseInputSource mouseInputSource = self.GetMouseInputSource(playerId, mouseIndex);
 
             if (mouseInputSource == null)
@@ -620,8 +806,9 @@ namespace DoDad.XSplitScreen
                 {
                     if(raycast.gameObject != null)
                     {
-                        if(raycast.gameObject.GetComponent<RoR2.UI.HGButton>())
+                        if(raycast.gameObject.GetComponent<RoR2.UI.MPButton>())
                         {
+                            //Print($"{(self.eventSystem as MPEventSystem).localUser?.userProfile.name} raycast onto {raycast.gameObject.name}");
                             foundObject = true;
                             self.eventSystem.SetSelectedGameObject(raycast.gameObject);
                         }
@@ -671,20 +858,28 @@ namespace DoDad.XSplitScreen
         }
         private void MPEventSystem_ValidateCurrentSelectedGameobject(On.RoR2.UI.MPEventSystem.orig_ValidateCurrentSelectedGameobject orig, RoR2.UI.MPEventSystem self)
         {
-            return;
-
-            if (self.currentSelectedGameObject == null)
+            if (!self.currentSelectedGameObject)
                 return;
 
-            RoR2.UI.MPButton mpButton = self.currentSelectedGameObject.GetComponent<RoR2.UI.MPButton>();
+            MPButton component = self.currentSelectedGameObject.GetComponent<MPButton>();
 
-            if (!mpButton || mpButton.interactable)
+            if(Enabled) // if hooked then we're always enabled.. right?
             {
-                return;
+                if(component)
+                {
+                    if ((component.interactable) && self.localUser != null)
+                    {
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                orig(self);
             }
 
-            Print("Setting null: " + self.currentSelectedGameObject?.name);
             self.SetSelectedGameObject(null);
+            return;
         }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
         {
@@ -703,33 +898,14 @@ namespace DoDad.XSplitScreen
                 localUser = ((RoR2.UI.MPEventSystem)_lastEventSystem).localUser,
                 pickedSurvivor = newPickedIcon.survivorDef
             });
-
         }
         #endregion
 
         #region Console Commands
-        [ConCommand(commandName = "xdevice_status", flags = ConVarFlags.None, helpText = "View who owns what controller")]
+        [ConCommand(commandName = "xdevice_status", flags = ConVarFlags.None, helpText = "Controller assignment information")]
         private static void ConDeviceStatus(ConCommandArgs args)
         {
-            Print("LocalUsers");
-            foreach(LocalUser user in LocalUserManager.localUsersList)
-            {
-                Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
-                foreach (Controller controller in user.inputPlayer.controllers.Controllers)
-                {
-                    Print($" -- {controller.identifier.controllerType.ToString()} ({controller.identifier.hardwareIdentifier.ToString()}");
-                }
-            }
-
-            Print("ReInput Players");
-            foreach(Player player in ReInput.players.AllPlayers)
-            {
-                Print($" - {player.name}");
-                foreach(Controller controller in player.controllers.Controllers)
-                {
-                    Print($" -- {controller.identifier.controllerType.ToString()}");
-                }
-            }
+            instance.OutputPlayerInputToLog();
         }
         [ConCommand(commandName = "xsplitswap", flags = ConVarFlags.None, helpText = "Swap players by index. Useage: xsplit # #")]
         private static void ConXSplitSwap(ConCommandArgs args)
@@ -761,7 +937,7 @@ namespace DoDad.XSplitScreen
                 Print(MSG_ERROR_INVALID_ARGS);
             }
         }
-        [ConCommand(commandName = "xsplitset", flags = ConVarFlags.None, helpText = "Maximum 4 players. Useage: xsplitset [players] [nokb]")]
+        [ConCommand(commandName = "xsplitset", flags = ConVarFlags.None, helpText = "Maximum 4 players. Useage: xsplitset [players] [kb]")]
         private static void ConXSplitSet(ConCommandArgs args)
         {
             if(!instance.CanConfigure())
@@ -772,63 +948,48 @@ namespace DoDad.XSplitScreen
             if (args.Count > 0)
                 requestedLocalPlayerCount = args.GetArgInt(0);
 
-            // keyboard should be enabled or disabled automatically
+            instance._requestKeyboard = false;
+
+            if (args.Count > 1)
+                if (args.GetArgString(1) == "kb")
+                    instance._requestKeyboard = true;
+
+            if (instance._requestKeyboard)
+                Print(MSG_INFO_KEYBOARD_STATUS, Log.LogLevel.Debug);
 
             instance.SetLocalPlayerCount(requestedLocalPlayerCount);
-
-            return;
-            /*
-            if (args.Count == 1 || args.Count == 2)
-            {
-                int requestedLocalPlayerCount = args.GetArgInt(0);
-
-                if (args.Count == 2)
-                {
-                    string _useKeyboard = args.GetArgString(1);
-                    DisableKeyboard = string.Compare(_useKeyboard, "nokb") == 0;
-                }
-                else
-                {
-                    Print(MSG_INFO_KEYBOARD_AUTOENABLE);
-                    DisableKeyboard = false;
-                }
-
-                if (instance.SetLocalPlayerCount(requestedLocalPlayerCount))
-                    Print(MSG_INFO_PLAYER_COUNT_CHANGED + requestedLocalPlayerCount.ToString());
-                else
-                { // Exit on error
-                    DisableKeyboard = false;
-                    instance.SetLocalPlayerCount(1);
-                    Print(MSG_ERROR_PLAYER_COUNT);
-                }
-            }
-            else
-            {
-                if (args.Count == 0)
-                {
-                    Print(MSG_INFO_KEYBOARD_AUTOENABLE);
-                    DisableKeyboard = false;
-
-                    if (instance.SetLocalPlayerCount(2))
-                        Print(MSG_INFO_PLAYER_COUNT_CHANGED + LocalPlayerCount.ToString());
-                    else
-                    { // Exit on error
-                        DisableKeyboard = false;
-                        instance.SetLocalPlayerCount(1);
-                        Print(MSG_ERROR_PLAYER_COUNT);
-                    }
-
-                }
-                else
-                    Print(MSG_ERROR_INVALID_ARGS);
-            }*/
         }
         #endregion
 
         #region Helpers
-        internal static void Print(string msg) 
-        { 
-            Debug.Log(string.Format("[{0}] {1}", MSG_TAG_PLUGIN, msg));
+        internal static void Print(string msg, Log.LogLevel level = Log.LogLevel.UnityDebug)
+        {
+            msg = string.Format(MSG_TAG_PLUGIN, msg);
+
+            switch (level)
+            {
+                case Log.LogLevel.Error:
+                    Log.LogError(msg);
+                    break;
+                case Log.LogLevel.Fatal:
+                    Log.LogFatal(msg);
+                    break;
+                case Log.LogLevel.Info:
+                    Log.LogInfo(msg);
+                    break;
+                case Log.LogLevel.Message:
+                    Log.LogMessage(msg);
+                    break;
+                case Log.LogLevel.Warning:
+                    Log.LogWarning(msg);
+                    break;
+                case Log.LogLevel.Debug:
+                    Log.LogDebug(msg);
+                    break;
+                default:
+                    Debug.Log(msg);
+                    break;
+            }
         }
         private static UserProfile CopyProfile(UserProfile template)
         {
@@ -849,6 +1010,34 @@ namespace DoDad.XSplitScreen
         private bool IsPlayerIndexValid(int index)
         {
             return index > 0 && index <= LocalPlayerCount;
+        }
+        #endregion
+
+        #region Definitions
+        System.Collections.IEnumerator WaitForMenuCoroutine()
+        {
+            GameObject singleplayerButton = GameObject.Find("GenericMenuButton (Singleplayer)");
+            GameObject logbookButton = GameObject.Find("GenericMenuButton (Logbook)");
+
+            while(!singleplayerButton || !logbookButton)
+            {
+                singleplayerButton = GameObject.Find("GenericMenuButton (Singleplayer)");
+                logbookButton = GameObject.Find("GenericMenuButton (Logbook)");
+                yield return null;
+            }
+
+            while (!_enteredMenu && RoR2.UI.MainMenu.MainMenuController.instance == null)
+                yield return null;
+
+            Print($"Singleplayerbutton: {singleplayerButton} logbook: {logbookButton}");
+            Print($"=Singleplayerbutton: {singleplayerButton==null} logbook: {logbookButton==null}");
+            AddMainMenuCalls();
+            ModMenuManager.CreateReferences();
+            ToggleModMenu(true);
+
+            _enteredMenu = false;
+
+            yield return null;
         }
         #endregion
     }
