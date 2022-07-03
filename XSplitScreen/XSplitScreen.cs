@@ -127,27 +127,27 @@ namespace DoDad
                 Destroy(this);
 
             instance = this;
-            DisableMenu = new UnityAction(XSplitScreen.instance.CleanupReferences);
+            //DisableMenu = new UnityAction(XSplitScreen.instance.CleanupReferences);
             LocalPlayerCount = 1;
+            OnLocalPlayerCount.AddListener(UpdateCursorStatus);
 
             Log.Init(Logger);
             CommandHelper.AddToConsoleWhenReady();
 
-            TogglePersistentHooks(true);
             Print(MSG_INFO_ENTER);
         }
         private void OnDestroy()
         {
             SetLocalPlayerCount(1);
-            DevModeTriggers(false);
+            //DevModeTriggers(false);
             TogglePersistentHooks(false);
             CleanupReferences();
             Print(MSG_INFO_EXIT);
         }
         public void Start()
         {
-            DevModeTriggers(_devMode);
-            OnLocalPlayerCount.AddListener(UpdateCursorStatus);
+            TogglePersistentHooks(true);
+            //DevModeTriggers(_devMode);
         }
         #endregion
 
@@ -226,6 +226,7 @@ namespace DoDad
             {
                 if (_titleButton == null)
                 {
+                    // TODO move this
                     LanguageAPI.Add(MSG_HOVER_TOKEN, MSG_HOVER_STRING);
                     LanguageAPI.Add(MSG_TITLE_BUTTON_TOKEN, MSG_TITLE_BUTTON_STRING);
 
@@ -240,6 +241,7 @@ namespace DoDad
                     newLayer.priority = 10;
 
                     ModScreen userControllerScreen = ModMenuManager.AddScreen(PluginName, newLayer); 
+
                     Quaternion forward = Quaternion.identity;
 
                     forward = Quaternion.AngleAxis(20f, Vector3.up);
@@ -389,7 +391,7 @@ namespace DoDad
                 On.RoR2.UI.MPButton.Update += MPButton_Update; // entire, req
                 On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick; // unaffected, req
                 On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
-                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
+                //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // yes
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // yes
                 On.RoR2.UI.CharacterSelectController.OnEnable += CharacterSelectController_OnEnable; // no
@@ -408,7 +410,7 @@ namespace DoDad
                 On.RoR2.UI.MPButton.Update -= MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
-                On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
+                //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
                 On.RoR2.UI.CharacterSelectController.OnEnable -= CharacterSelectController_OnEnable; 
@@ -661,8 +663,14 @@ namespace DoDad
         {
             if (string.Compare(arg1.name, "title") == 0)
             {
-                StopCoroutine(WaitFormenuLoad);
+                if (WaitFormenuLoad != null)
+                    StopCoroutine(WaitFormenuLoad);
+
                 WaitFormenuLoad = StartCoroutine(WaitForMenuCoroutine());
+            }
+            else
+            {
+                ToggleModMenu(false);
             }
 
             UpdateCursorStatus();
@@ -718,8 +726,6 @@ namespace DoDad
         private void MPButton_OnPointerExit(On.RoR2.UI.MPButton.orig_OnPointerExit orig, RoR2.UI.MPButton self, PointerEventData eventData)
         {
             orig(self, eventData);
-            //Print($"OnPointerExit for Input module '{eventData.currentInputModule.gameObject.name}'");
-            //Print($"Object {self.name}");
         }
         private bool MPButton_InputModuleIsAllowed(On.RoR2.UI.MPButton.orig_InputModuleIsAllowed orig, RoR2.UI.MPButton self, BaseInputModule inputModule)
         {
@@ -734,7 +740,6 @@ namespace DoDad
             {
                 if(eventSystem && eventSystem.currentSelectedGameObject == self.gameObject && ((eventSystem.player.GetButtonDown(4) && !self.disableGamepadClick) || eventSystem.player.GetButtonDown(14)))
                 {
-                    Print($"({eventSystem.name}) {eventSystem.localUser?.userProfile?.name} just clicked on {self.name}");
                     _lastEventSystem = eventSystem;
                     self.InvokeClick();
                 }
@@ -751,7 +756,6 @@ namespace DoDad
         private void MPButton_OnPointerClick(On.RoR2.UI.MPButton.orig_OnPointerClick orig, RoR2.UI.MPButton self, PointerEventData eventData)
         {
             _lastEventSystem = (eventData.currentInputModule.eventSystem as RoR2.UI.MPEventSystem);
-            Print($"{_lastEventSystem.localUser} clicked on {self.name}");
             orig(self, eventData);
         }
         private void CharacterSelectController_OnEnable(On.RoR2.UI.CharacterSelectController.orig_OnEnable orig, RoR2.UI.CharacterSelectController self)
@@ -883,6 +887,14 @@ namespace DoDad
         }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
         {
+            MPEventSystem lastEventSystem = ((RoR2.UI.MPEventSystem)_lastEventSystem);
+
+            if (_lastEventSystem == null)
+            {
+                orig(self, newPickedIcon);
+                return;
+            }
+
             if (self.pickedIcon == newPickedIcon)
                 return;
 
@@ -895,7 +907,7 @@ namespace DoDad
 
             onSurvivorPicked.Invoke(new CharacterSelectBarController.SurvivorPickInfo()
             {
-                localUser = ((RoR2.UI.MPEventSystem)_lastEventSystem).localUser,
+                localUser = lastEventSystem.localUser,
                 pickedSurvivor = newPickedIcon.survivorDef
             });
         }
@@ -964,7 +976,7 @@ namespace DoDad
         #region Helpers
         internal static void Print(string msg, Log.LogLevel level = Log.LogLevel.UnityDebug)
         {
-            msg = string.Format(MSG_TAG_PLUGIN, msg);
+            msg = level != Log.LogLevel.UnityDebug ? msg : string.Format(MSG_TAG_PLUGIN, msg);
 
             switch (level)
             {
@@ -1016,23 +1028,24 @@ namespace DoDad
         #region Definitions
         System.Collections.IEnumerator WaitForMenuCoroutine()
         {
+            // ModMenuManager depends on this. TODO stop that
             GameObject singleplayerButton = GameObject.Find("GenericMenuButton (Singleplayer)");
-            GameObject logbookButton = GameObject.Find("GenericMenuButton (Logbook)");
 
-            while(!singleplayerButton || !logbookButton)
+            while (!singleplayerButton)
             {
                 singleplayerButton = GameObject.Find("GenericMenuButton (Singleplayer)");
-                logbookButton = GameObject.Find("GenericMenuButton (Logbook)");
                 yield return null;
             }
 
-            while (!_enteredMenu && RoR2.UI.MainMenu.MainMenuController.instance == null)
+            while (RoR2.UI.MainMenu.MainMenuController.instance == null || !_enteredMenu)
                 yield return null;
 
-            Print($"Singleplayerbutton: {singleplayerButton} logbook: {logbookButton}");
-            Print($"=Singleplayerbutton: {singleplayerButton==null} logbook: {logbookButton==null}");
-            AddMainMenuCalls();
-            ModMenuManager.CreateReferences();
+            while (!ModMenuManager.Ready)
+            {
+                ModMenuManager.CreateReferences();
+                yield return null;
+            }
+
             ToggleModMenu(true);
 
             _enteredMenu = false;

@@ -32,6 +32,16 @@ namespace DoDad.UI
 
         private static GameObject ButtonPrefab;
         private static GameObject PopupPrefab;
+
+        public static int DefaultLayer { get; internal set; }
+
+        public static bool Ready 
+        { 
+            get 
+            { 
+                return (ButtonPrefab != null && PopupPrefab != null);
+            }
+        }
         #endregion
 
         #region Public Methods
@@ -54,6 +64,10 @@ namespace DoDad.UI
 
             if(PopupPrefab == null)
                 CreatePopupPrefab();
+
+            Print($"ModManager: {ButtonPrefab == null} / {PopupPrefab == null}");
+            if (Ready)
+                DefaultLayer = ButtonPrefab.layer;
         }
         /// <summary>
         /// Adds a new screen to the main menu and disables it by default.
@@ -177,14 +191,6 @@ namespace DoDad.UI
                 {
                     button.requiredTopLayer = layerKey;
                 }
-                //menuRect.anchorMax = new Vector2(0.75f, 0.5f);// templateRect.anchorMax;
-                //menuRect.anchorMin = new Vector2(0.25f, 0.5f);//;
-                //menuRect.offsetMax = new Vector2(0, 300);
-                //menuRect.offsetMin = new Vector2(0, -300);
-                //menuRect.anchoredPosition = Vector2.zero;
-
-                //menuRect.localScale = Vector3.one * 100f;
-                //menuRect.localScale = Vector3.one;
             }
 
             ResetBindingControllers(newPopup);
@@ -393,9 +399,9 @@ namespace DoDad.UI
         #region Helpers
         private static void Print(object msg, Log.LogLevel level = Log.LogLevel.UnityDebug)
         {
-            msg = string.Format(MSG_TAG, msg);
+            msg = level != Log.LogLevel.UnityDebug ? msg : string.Format(MSG_TAG, msg);
 
-            switch(level)
+            switch (level)
             {
                 case Log.LogLevel.Error:
                     Log.LogError(msg);
@@ -451,7 +457,9 @@ namespace DoDad.UI
         public static GameObject CreateUIGameObject(string name)
         {
             GameObject newUI = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer));
-            newUI.layer = GameObject.Find("GenericMenuButton (Singleplayer)").layer;
+            newUI.layer = ModMenuManager.DefaultLayer;
+            //GameObject currentLayer =
+            //newUI.layer = GameObject.Find("GenericMenuButton (Singleplayer)").layer;
             return newUI;
         }
         private static void Initialize()
@@ -513,7 +521,6 @@ namespace DoDad.UI
             HGButton button = newObject.GetComponent<HGButton>();
             button.hoverLanguageTextMeshController = _buttonPanel.transform.GetChild(0).gameObject.GetComponentInChildren<LanguageTextMeshController>();
             button.requiredTopLayer = GetComponent<UILayerKey>();
-            Debug.Log($"Set layer key '{GetComponent<UILayerKey>().layer.name}' for '{button.name}'");
         }
         public void AddJuiceOnEnable(UIJuice element)
         {
