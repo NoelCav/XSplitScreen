@@ -14,6 +14,7 @@ using UnityEngine.Events;
 using DoDad.UI;
 using R2API;
 using RoR2.UI;
+using System.Text;
 
 /// <summary>
 /// Influenced by iDeathHD's FixedSplitScreen mod
@@ -31,7 +32,7 @@ namespace DoDad
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.1.1";
 
         private static readonly int MAX_LOCAL_PLAYERS = 4;
 
@@ -110,7 +111,7 @@ namespace DoDad
         private HGButton _titleButton;
         private GameObject _controllerAssignmentWindow;
 
-        private int _playerBeginIndex => KeyboardMode ? 1 : 2;
+        private int _playerBeginIndex => KeyboardMode ? 1 : 1;//1 : 2;
         private int _retryCounter = 0;
         private bool _disableKeyboard = false;
         private bool _devMode = false;
@@ -118,6 +119,7 @@ namespace DoDad
         private bool _keyboardOptional = false;
         private bool _requestKeyboard = false;
         private bool _enteredMenu = false;
+        private bool _mpUpdateOutputThisFrame = false;
         #endregion
 
         #region Unity Methods
@@ -147,8 +149,36 @@ namespace DoDad
         public void Start()
         {
             TogglePersistentHooks(true);
-            //DevModeTriggers(_devMode);
+            
+            
+            
+            DevModeTriggers(_devMode);
         }
+        public void LateUpdate()
+        {
+            _mpUpdateOutputThisFrame = false;
+        }
+       /*
+        public void Update()
+        {
+
+            if (Input.GetKeyDown("k"))
+            {
+                if (MPEventSystem.instancesList == null)
+                {
+                    Print("No MPEventSystem instances");
+                    return;
+
+                }
+                foreach(MPEventSystem system in MPEventSystem.instancesList)
+                {
+                    if(system.currentSelectedGameObject == null)
+                        Print($"{system?.localUser?.userProfile?.name}({system?.name}) targeting nothing");
+                    else
+                        Print($"{system?.localUser?.userProfile?.name}({system?.name}) targeting {system?.currentSelectedGameObject?.name}");
+                }
+            }
+        }*/
         #endregion
 
         #region Public Methods
@@ -203,23 +233,41 @@ namespace DoDad
 
             Print("DevMode");
             ToggleModMenu(enable);
-            AddMainMenuCalls();
+            //AddMainMenuCalls();
         }
         private void TogglePersistentHooks(bool status)
         {
             if(status)
             {
                 On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter += BaseMainMenuScreen_OnEnter;
-
+                //On.RoR2.HealthComponent.TakeDamage += HealthComponent_TakeDamage;
                 SceneManager.activeSceneChanged += SceneManager_activeSceneChanged;
+                On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake; // move
             }
             else
             {
                 On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter -= BaseMainMenuScreen_OnEnter;
-
+                //On.RoR2.HealthComponent.TakeDamage -= HealthComponent_TakeDamage;
                 SceneManager.activeSceneChanged -= SceneManager_activeSceneChanged;
+                On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
             }
         }
+
+        private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
+        {
+            orig(self);
+            self._forceCursorForGamepad = true;
+        }
+
+        private void HealthComponent_TakeDamage(On.RoR2.HealthComponent.orig_TakeDamage orig, HealthComponent self, DamageInfo damageInfo)
+        {
+            if(self.body.teamComponent.teamIndex == TeamIndex.Player)
+                damageInfo.damage = 0f;
+
+            damageInfo.force = Vector3.zero;
+            orig(self, damageInfo);
+        }
+
         private void ToggleModMenu(bool enable) // Call this function when the title screen is loaded, maybe on scene change?
         {
             if(enable)
@@ -363,7 +411,7 @@ namespace DoDad
                     player = ReInput.players.GetPlayer(_playerBeginIndex + index),
                     profile = userProfileList[index]
                 };
-                Print($"Added {ReInput.players.GetPlayer(_playerBeginIndex + index).name}");
+               // Print($"Added {ReInput.players.GetPlayer(_playerBeginIndex + index).name}");
             }
 
             LocalUserManager.SetLocalUsers(initializationArray);
@@ -381,6 +429,10 @@ namespace DoDad
 
             if(Enabled)
             {
+                On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
+                On.RoR2.UI.RuleChoiceController.FindNetworkUser += RuleChoiceController_FindNetworkUser;
+                On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
+                On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
                 //On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
                // On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
                 //On.RoR2.UI.CharacterSelectController.RebuildLocal += CharacterSelectController_RebuildLocal;
@@ -391,6 +443,7 @@ namespace DoDad
                 On.RoR2.UI.MPButton.Update += MPButton_Update; // entire, req
                 On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick; // unaffected, req
                 On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.CanBeSelected += MPButton_CanBeSelected;
                 //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // yes
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // yes
@@ -399,7 +452,11 @@ namespace DoDad
             }
             else
             {
-                Print("DISABLING ALL HOOKS");
+                //Print("DISABLING ALL HOOKS");
+                On.RoR2.UI.ScoreboardController.Awake -= ScoreboardController_Awake;
+                On.RoR2.UI.RuleChoiceController.FindNetworkUser -= RuleChoiceController_FindNetworkUser;
+                On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
+                On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
                 //On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
                 //On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
                 //On.RoR2.UI.CharacterSelectController.RebuildLocal -= CharacterSelectController_RebuildLocal;
@@ -410,6 +467,7 @@ namespace DoDad
                 On.RoR2.UI.MPButton.Update -= MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.CanBeSelected -= MPButton_CanBeSelected;
                 //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
@@ -419,6 +477,48 @@ namespace DoDad
             
             return true;
         }
+
+        private void ScoreboardController_Awake(On.RoR2.UI.ScoreboardController.orig_Awake orig, ScoreboardController self)
+        {
+            orig(self);
+
+            self.transform.GetComponentInChildren<PostProcessDuration>().gameObject.SetActive(false);
+        }
+
+        private NetworkUser RuleChoiceController_FindNetworkUser(On.RoR2.UI.RuleChoiceController.orig_FindNetworkUser orig, RuleChoiceController self)
+        {
+            // Fix rule selection
+            return _lastEventSystem?.localUser.currentNetworkUser;
+        }
+
+        private LocalUser SurvivorIconController_GetLocalUser(On.RoR2.UI.SurvivorIconController.orig_GetLocalUser orig, SurvivorIconController self)
+        {
+            // Fix entitlement selection
+            return _lastEventSystem.localUser;
+        }
+
+        private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
+        {
+            // Fix debug spam
+            if (EventSystem.current == null)
+                return;
+
+            MPEventSystem system = EventSystem.current as MPEventSystem;
+
+            if (system == null)
+                return;
+
+            orig(self);
+        }
+
+        private bool MPButton_CanBeSelected(On.RoR2.UI.MPButton.orig_CanBeSelected orig, MPButton self)
+        {
+            if (!self.gameObject.activeInHierarchy)
+                return false;
+
+            return true;
+        }
+
         private bool ToggleControllers(bool valid = true)
         {
             if (!valid)
@@ -556,8 +656,8 @@ namespace DoDad
         }
         private void AddMainMenuCalls()
         {
-            GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
-            GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
+            //GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
+            //GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.AddListener(DisableMenu);
         }
         private void OnClickToggleKeyboard()
         {
@@ -565,8 +665,8 @@ namespace DoDad
         }
         public void CleanupReferences()
         {
-            GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
-            GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
+            //GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
+            //GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
             ToggleModMenu(false);
         }
         private void SwapProfiles(int firstPlayerIndex, int secondPlayerIndex)
@@ -583,45 +683,53 @@ namespace DoDad
 
             LogInProfiles(currentProfiles);
         }
-        private void OutputPlayerInputToLog()
+        private string OutputPlayerInputToLog(bool output = true)
         {
+            StringBuilder builder = new StringBuilder();
 
-            Print("LocalUsers");
+            builder.AppendLine($"{PluginName} {PluginVersion} = {Enabled}");
+            builder.AppendLine($"MAX_LOCAL_PLAYERS: {MAX_LOCAL_PLAYERS}");
+            builder.AppendLine($"LocalPlayerCount: {LocalPlayerCount}");
+            builder.AppendLine($"KeyboardMode: {KeyboardMode}");
+            builder.AppendLine("");
+            builder.AppendLine("Local Users");
+            //Print("LocalUsers");
             foreach (LocalUser user in LocalUserManager.localUsersList)
             {
-                Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
+                //Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
+                builder.AppendLine($" {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
                 foreach (Controller controller in user.inputPlayer.controllers.Controllers)
                 {
-                    Print($" -- {controller.identifier.controllerType.ToString()} ({controller.name.ToString()})");
+                    builder.AppendLine($" - {controller.identifier.controllerType.ToString()} ({controller.name.ToString()})");
+                    //Print($" -- {controller.identifier.controllerType.ToString()} ({controller.name.ToString()})");
                 }
             }
 
-            Print("ReInput Players");
+            builder.AppendLine("ReInput");
+            //Print("ReInput Players");
+            int count = 1;
+            foreach(Controller controller in ReInput.controllers.Controllers)
+            {
+                builder.AppendLine($"[{count}] {controller.name}, {controller.hardwareIdentifier}, {controller.hardwareName}, {controller.id}, {controller.identifier.controllerType}, {controller.enabled}");
+                count++;
+            }
             foreach (Player player in ReInput.players.AllPlayers)
             {
-                Print($" - {player.name}");
+                builder.AppendLine($"{player.name}");
+                //Print($" - {player.name}");
                 foreach (Controller controller in player.controllers.Controllers)
                 {
-                    Print($" -- {controller.templateCount.ToString()} ({controller.name})");
-                    Print($" --- {controller.mapTypeString} ({controller.buttonCount})");
+                    builder.AppendLine($" - {controller.templateCount.ToString()} ({controller.name})");
+                    builder.AppendLine($" -- {controller.mapTypeString} ({controller.buttonCount})");
+                    //Print($" -- {controller.templateCount.ToString()} ({controller.name})");
+                    //Print($" --- {controller.mapTypeString} ({controller.buttonCount})");
                 }
             }
-        }
-        private void OutputPlayerBindingsToLog()
-        {
-            foreach (LocalUser user in LocalUserManager.localUsersList)
-            {
-                Print($" - {user.inputPlayer.name} ({(user.userProfile == null ? ("no user") : user.userProfile.name)})");
-                foreach (Controller controller in user.inputPlayer.controllers.Controllers)
-                {
-                    Print($" -- {controller.mapTypeString} ({controller.name.ToString()})");
 
-                    if(controller.type == ControllerType.Joystick || controller.type == ControllerType.Custom)
-                    {
+            if(output)
+                Print(builder.ToString());
 
-                    }
-                }
-            }
+            return builder.ToString();
         }
         #endregion
 
@@ -649,12 +757,16 @@ namespace DoDad
             CursorOpener[] openers = GameObject.FindObjectsOfType<CursorOpener>();
 
             foreach (CursorOpener opener in openers)
+            {
+                //Print($"Setting {opener.name} to true");
                 opener.forceCursorForGamePad = Enabled;
+            }
 
             if (!XSplitScreen.Enabled)
             {
                 foreach (MPEventSystem instance in MPEventSystem.instancesList)
                 {
+                   // Print($"UpdateCursorStatus setting SelectedGameObject to null");
                     instance.SetSelectedGameObject(null);
                 }
             }
@@ -723,10 +835,6 @@ namespace DoDad
                 bodyIndex = bodyIndex
             });
         }
-        private void MPButton_OnPointerExit(On.RoR2.UI.MPButton.orig_OnPointerExit orig, RoR2.UI.MPButton self, PointerEventData eventData)
-        {
-            orig(self, eventData);
-        }
         private bool MPButton_InputModuleIsAllowed(On.RoR2.UI.MPButton.orig_InputModuleIsAllowed orig, RoR2.UI.MPButton self, BaseInputModule inputModule)
         {
             return true;
@@ -736,14 +844,41 @@ namespace DoDad
             if(!self.eventSystem || self.eventSystem.player == null)
                 return;
 
-            foreach(RoR2.UI.MPEventSystem eventSystem in RoR2.UI.MPEventSystem.readOnlyInstancesList)
+            bool outputMessage = false;
+
+            for (int e = 1; e < RoR2.UI.MPEventSystem.readOnlyInstancesList.Count; e++)
             {
-                if(eventSystem && eventSystem.currentSelectedGameObject == self.gameObject && ((eventSystem.player.GetButtonDown(4) && !self.disableGamepadClick) || eventSystem.player.GetButtonDown(14)))
+                RoR2.UI.MPEventSystem eventSystem = RoR2.UI.MPEventSystem.readOnlyInstancesList[e] as MPEventSystem;
+
+                if (eventSystem.player.GetButtonDown(4) && !_mpUpdateOutputThisFrame)
                 {
+                   // Print($"[{self.disableGamepadClick}] {eventSystem.name} is pressing X and object selected is {(eventSystem.currentSelectedGameObject != null ? eventSystem.currentSelectedGameObject.name : "null")}");
+                    outputMessage = true;
+                }
+                if (eventSystem && eventSystem.currentSelectedGameObject == self.gameObject && ((eventSystem.player.GetButtonDown(4) && !self.disableGamepadClick) || eventSystem.player.GetButtonDown(14)))
+                {
+                   // Print("Invoking click");
                     _lastEventSystem = eventSystem;
                     self.InvokeClick();
                 }
-            }
+            }/*
+            foreach(RoR2.UI.MPEventSystem eventSystem in RoR2.UI.MPEventSystem.readOnlyInstancesList)
+            {
+                if (eventSystem.player.GetButtonDown(4) && !_mpUpdateOutputThisFrame)
+                {
+                    Print($"[{self.disableGamepadClick}] {eventSystem.name} is pressing X and object selected is {(eventSystem.currentSelectedGameObject != null ? eventSystem.currentSelectedGameObject.name : "null")}");
+                    outputMessage = true;
+                }
+                if(eventSystem && eventSystem.currentSelectedGameObject == self.gameObject && ((eventSystem.player.GetButtonDown(4) && !self.disableGamepadClick) || eventSystem.player.GetButtonDown(14)))
+                {
+                    Print("Invoking click");
+                    _lastEventSystem = eventSystem;
+                    self.InvokeClick();
+                }
+            }*/
+
+            if(outputMessage)
+                _mpUpdateOutputThisFrame = true;
 
             if (!self.defaultFallbackButton || self.eventSystem.currentInputSource != RoR2.UI.MPEventSystem.InputSource.Gamepad || !(self.eventSystem.currentSelectedGameObject == null || !self.CanBeSelected()))
             {
@@ -803,6 +938,11 @@ namespace DoDad
             UnityEngine.EventSystems.RaycastResult firstRaycast = BaseInputModule.FindFirstRaycast(self.m_RaycastResultCache);
 
             bool foundObject = false;
+            bool foundInput = false;
+            bool foundHG = false;
+            int priority = 0;
+
+            GameObject focusObject = null;
 
             foreach (RaycastResult raycast in self.m_RaycastResultCache)
             {
@@ -810,18 +950,88 @@ namespace DoDad
                 {
                     if(raycast.gameObject != null)
                     {
-                        if(raycast.gameObject.GetComponent<RoR2.UI.MPButton>())
+                        TMPro.TMP_InputField input = raycast.gameObject.GetComponent<TMPro.TMP_InputField>();
+                        MPButton mpButton = raycast.gameObject.GetComponent<RoR2.UI.MPButton>();
+                        HGButton hgButton = mpButton?.GetComponent<HGButton>();
+
+                        if(input != null && priority < 3)
                         {
-                            //Print($"{(self.eventSystem as MPEventSystem).localUser?.userProfile.name} raycast onto {raycast.gameObject.name}");
-                            foundObject = true;
-                            self.eventSystem.SetSelectedGameObject(raycast.gameObject);
+                            //Print($"Selecting {raycast.gameObject} p3");
+                            focusObject = raycast.gameObject;
+                            priority = 3;
                         }
+                        if(hgButton != null)
+                        {
+                            if(priority <2)
+                            {
+                                //Print($"Selecting {raycast.gameObject} p2");
+                                focusObject = raycast.gameObject;
+                                priority = 2;
+                            }
+                        }
+                        if(mpButton != null)
+                        {
+                            if(priority < 1)
+                            {
+                                //Print($"Selecting {raycast.gameObject} p1");
+                                focusObject = raycast.gameObject;
+                                priority = 1;
+                            }
+                        }
+                        /*
+                        TMPro.TMP_InputField input = raycast.gameObject.GetComponent<TMPro.TMP_InputField>();
+
+                        if (input != null)
+                        {
+                            //Print("FOUND INPUT"); this does nothing
+                            foundInput = true;
+                            //self.eventSystem.SetSelectedGameObject(raycast.gameObject);
+                            foundObject = true;
+                        }
+
+                        if (self.eventSystem?.currentSelectedGameObject?.GetComponent<TMPro.TMP_InputField>() != null)
+                            foundInput = foundObject = true;
+
+                        MPButton button = raycast.gameObject.GetComponent<RoR2.UI.MPButton>();
+
+                        if (button != null && !foundInput)
+                        {
+                            if (raycast.gameObject.GetComponent<RoR2.UI.HGButton>() != null)
+                            {
+                               //Print("FOUND HG");
+                                foundHG = true;
+                               // self.eventSystem.SetSelectedGameObject(raycast.gameObject);
+                                foundObject = true;
+                            }
+
+                            if(!foundHG)
+                            {
+                                //Print("FOUND MP");
+                                //self.eventSystem.SetSelectedGameObject(raycast.gameObject);
+                                foundObject = true;
+                            }
+                        */
+
+                        //if(raycast.gameObject.GetComponent<RoR2.UI.MPButton>().requiredTopLayer.representsTopLayer)
+                        //{
+                        //    foundObject = true;
+                        //   self.eventSystem.SetSelectedGameObject(raycast.gameObject);
+                        //}
+                        //Print($"{(self.eventSystem as MPEventSystem).localUser?.userProfile.name} raycast onto {raycast.gameObject.name}");
+
                     }
                 }
             }
 
-            if (!foundObject)
-                self.eventSystem.SetSelectedGameObject(null);
+            //if(self.eventSystem.currentSelectedGameObject?.GetComponent<TMPro.TMP_InputField>() != null)
+
+            if (self.eventSystem.currentSelectedGameObject != null && focusObject == null)
+                if (self.eventSystem.currentSelectedGameObject.GetComponent<TMPro.TMP_InputField>() != null)
+                    focusObject = self.eventSystem.currentSelectedGameObject;
+
+            self.eventSystem.SetSelectedGameObject(focusObject); // REMOVED
+            //if (!foundObject)
+            //    self.eventSystem.SetSelectedGameObject(null);
 
             data1.pointerCurrentRaycast = firstRaycast;
             self.UpdateHover(self.m_RaycastResultCache);
@@ -862,6 +1072,10 @@ namespace DoDad
         }
         private void MPEventSystem_ValidateCurrentSelectedGameobject(On.RoR2.UI.MPEventSystem.orig_ValidateCurrentSelectedGameobject orig, RoR2.UI.MPEventSystem self)
         {
+            // REVISION ADD
+            return;
+            // REVISION ADD
+
             if (!self.currentSelectedGameObject)
                 return;
 
@@ -871,10 +1085,12 @@ namespace DoDad
             {
                 if(component)
                 {
-                    if ((component.interactable) && self.localUser != null)
-                    {
+                    if (component.interactable)
                         return;
-                    }
+                    //if ((component.interactable) && self.localUser != null)
+                    //{
+                    //    return;
+                    //}
                 }
             }
             else
@@ -914,6 +1130,14 @@ namespace DoDad
         #endregion
 
         #region Console Commands
+        [ConCommand(commandName = "xlog", flags = ConVarFlags.None, helpText = "Print device status to log")]
+        private static void ConXLog(ConCommandArgs args)
+        {
+            string file = $"{Application.persistentDataPath}/XSplitScreen-Debug.txt";
+            System.IO.File.AppendAllText(file, instance.OutputPlayerInputToLog(false));
+            Print($"File saved to '{file}");
+        }
+
         [ConCommand(commandName = "xdevice_status", flags = ConVarFlags.None, helpText = "Controller assignment information")]
         private static void ConDeviceStatus(ConCommandArgs args)
         {

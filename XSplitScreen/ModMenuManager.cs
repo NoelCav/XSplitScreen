@@ -65,7 +65,7 @@ namespace DoDad.UI
             if(PopupPrefab == null)
                 CreatePopupPrefab();
 
-            Print($"ModManager: {ButtonPrefab == null} / {PopupPrefab == null}");
+            //Print($"ModManager: {ButtonPrefab == null} / {PopupPrefab == null}");
             if (Ready)
                 DefaultLayer = ButtonPrefab.layer;
         }

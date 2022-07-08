@@ -6,7 +6,7 @@ A GUI-based splitscreen mod
 
 1. Install the plugin and click the 'Enable' button in the XSplitScreen menu
 
-If there aren't enough profiles the first profile will be copied
+If there aren't enough profiles the first profile will be copied. Console commands are also available.
 
 # Console commands
 
@@ -41,12 +41,17 @@ Commands that affect local users can only be used in the main menu
 - Sometimes the ability to type in the console is broken. Try disabling and enabling the mod again or enabling it with the console open
 - Occasionally loadouts aren't saved to the correct character
 - Gamepad players are unable to use the buttons in the right-hand pane on the character select screen - use the mouse for now
+- Both screens blur when opening the ingame scoreboard
 
 ## Special thanks
 
 - iDeathHD for creating FixedSplitScreen
 
 ## Changelog
+
+**1.1.1**
+
+- Added dependency string for R2API. This should fix the mod not loading if you didn't have R2API previously.
 
 **1.1.0**
 
