@@ -19,6 +19,9 @@ using System.Text;
 /// <summary>
 /// Influenced by iDeathHD's FixedSplitScreen mod
 /// https://thunderstore.io/package/xiaoxiao921/FixedSplitscreen/
+/// 
+/// This should be major version '0' to indicate a development version but it's my first release ever
+/// so I mistakenly used '1' instead
 /// </summary>
 namespace DoDad
 {
@@ -32,10 +35,21 @@ namespace DoDad
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "1.1.1";
+        public const string PluginVersion = "1.1.2";
 
         private static readonly int MAX_LOCAL_PLAYERS = 4;
 
+        private static readonly string MSG_DISCORD_LINK_HREF = "https://discord.gg/maHhJSv62G";
+        private static readonly string MSG_DISCORD_LINK_STRING = "Discord";
+        private static readonly string MSG_DISCORD_LINK_TOKEN = "XSPLITSCREEN_DISCORD";
+        private static readonly string MSG_DISCORD_LINK_HOVER_STRING = "Join the Discord for support";
+        private static readonly string MSG_DISCORD_LINK_HOVER_TOKEN = "XSPLITSCREEN_DISCORD_HOVER";
+        private static readonly string LogFileName = "XSplitScreen-Log.txt";
+        private static readonly string MSG_INFO_DEBUG_SAVED = "Log file updated: '{0}'";
+        private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN = "XSPLITSCREEN_DEBUG_FILE";
+        private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_STRING = "Debug Folder";
+        private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN = "XSPLITSCREEN_DEBUG_FILE_HOVER";
+        private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING = "Open the folder containing the XSplitScreen log";
         private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN = "XSPLITSCREEN_CONFIG_HEADER";
         private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_STRING = "Under Construction";
         private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN = "XSPLITSCREEN_ENABLE_HOVER";
@@ -105,6 +119,20 @@ namespace DoDad
         public static bool KeyboardMode => instance._keyboardModeOnly || (_localPlayerCount == 1) || (instance._keyboardOptional && instance._requestKeyboard);
         
         private static int _localPlayerCount = 1;
+        private static bool OverwriteLogFile
+        {
+            get
+            {
+                bool value = instance._overwriteLogFile;
+
+                if(value)
+                {
+                    instance._overwriteLogFile = false;
+                }
+
+                return value;
+            }
+        }
 
         private Coroutine WaitFormenuLoad;
         private RoR2.UI.MPEventSystem _lastEventSystem;
@@ -120,6 +148,10 @@ namespace DoDad
         private bool _requestKeyboard = false;
         private bool _enteredMenu = false;
         private bool _mpUpdateOutputThisFrame = false;
+        private bool _overwriteLogFile = true;
+        // create wrapper class for RiskOfOptions
+        // create menu there or in the main menu
+
         #endregion
 
         #region Unity Methods
@@ -149,9 +181,6 @@ namespace DoDad
         public void Start()
         {
             TogglePersistentHooks(true);
-            
-            
-            
             DevModeTriggers(_devMode);
         }
         public void LateUpdate()
@@ -205,7 +234,7 @@ namespace DoDad
                 success &= ToggleHooks(success);
 
             success &= ToggleControllers(success);
-            OutputPlayerInputToLog();
+
             if (!success)
             {
                 Print(MSG_ERROR_PLAYER_COUNT, Log.LogLevel.Warning);
@@ -220,8 +249,10 @@ namespace DoDad
             else
             {
                 _retryCounter = 0;
+                WriteToLogFile(LogFileName, OutputPlayerInputToLog(false), OverwriteLogFile);
                 return success;
             }
+
         }
         #endregion
 
@@ -283,6 +314,10 @@ namespace DoDad
                     LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_TOKEN, MSG_SPLITSCREEN_ENABLE_STRING);
                     LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_TOKEN, MSG_SPLITSCREEN_DISABLE_STRING);
                     LanguageAPI.Add(MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN, MSG_SPLITSCREEN_CONFIG_HEADER_STRING);
+                    LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_STRING);
+                    LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING);
+                    LanguageAPI.Add(MSG_DISCORD_LINK_TOKEN, MSG_DISCORD_LINK_STRING);
+                    LanguageAPI.Add(MSG_DISCORD_LINK_HOVER_TOKEN, MSG_DISCORD_LINK_HOVER_STRING);
 
                     UILayer newLayer = ScriptableObject.CreateInstance<UILayer>();
                     newLayer.name = PluginName;
@@ -305,7 +340,7 @@ namespace DoDad
                     _titleButton.onClick.AddListener(OnClickMainTitleButton);
 
                     HGButton enableSplitScreenButton = ModMenuManager.CreateHGButton("EnableSplitScreen", MSG_TITLE_BUTTON_TOKEN, Menu.None, userControllerScreen);
-                    enableSplitScreenButton.hoverToken = MSG_HOVER_TOKEN;
+                    enableSplitScreenButton.hoverToken = MSG_HOVER_TOKEN; // what is this for?
                     enableSplitScreenButton.updateTextOnHover = true;
                     enableSplitScreenButton.submitOnPointerUp = true;
                     enableSplitScreenButton.uiClickSoundOverride = "";
@@ -319,6 +354,27 @@ namespace DoDad
                     component.OnDisabledToken = MSG_SPLITSCREEN_ENABLE_TOKEN;
                     component.OnDisabledHoverToken = MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN;
                     component.UpdateToken();
+
+                    HGButton openDebugFolderButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, Menu.None, userControllerScreen);
+                    openDebugFolderButton.hoverToken = MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN;
+                    openDebugFolderButton.updateTextOnHover = true;
+                    openDebugFolderButton.submitOnPointerUp = true;
+                    openDebugFolderButton.uiClickSoundOverride = "";
+                    openDebugFolderButton.onClick.AddListener(OnClickOpenDebugFolder);
+                    openDebugFolderButton.defaultFallbackButton = false;
+                    openDebugFolderButton.requiredTopLayer = userControllerScreen.GetComponent<UILayerKey>();
+
+                    HGButton openDiscordButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_DISCORD_LINK_TOKEN, Menu.None, userControllerScreen);
+                    openDiscordButton.hoverToken = MSG_DISCORD_LINK_HOVER_TOKEN;
+                    openDiscordButton.updateTextOnHover = true;
+                    openDiscordButton.submitOnPointerUp = true;
+                    openDiscordButton.uiClickSoundOverride = "";
+                    openDiscordButton.onClick.AddListener(OnClickJoinDiscord);
+                    openDiscordButton.defaultFallbackButton = false;
+                    openDiscordButton.requiredTopLayer = userControllerScreen.GetComponent<UILayerKey>();
+
+
+                    WriteToLogFile(LogFileName, OutputPlayerInputToLog(false), OverwriteLogFile);
                 }
             }
             else
@@ -688,7 +744,7 @@ namespace DoDad
             StringBuilder builder = new StringBuilder();
 
             builder.AppendLine($"{PluginName} {PluginVersion} = {Enabled}");
-            builder.AppendLine($"MAX_LOCAL_PLAYERS: {MAX_LOCAL_PLAYERS}");
+            builder.AppendLine($"MaxPlayers: {MaxPlayers}");
             builder.AppendLine($"LocalPlayerCount: {LocalPlayerCount}");
             builder.AppendLine($"KeyboardMode: {KeyboardMode}");
             builder.AppendLine("");
@@ -731,6 +787,17 @@ namespace DoDad
 
             return builder.ToString();
         }
+        private void WriteToLogFile(string fileName, string text, bool overwrite = false)
+        {
+            string file = $"{Application.persistentDataPath}/{fileName}";
+
+            if (overwrite)
+                System.IO.File.WriteAllText(file, text);
+            else
+                System.IO.File.AppendAllText(file, text);
+
+            Print(string.Format(MSG_INFO_DEBUG_SAVED, file));
+        }
         #endregion
 
         #region Event Handlers / Hooks
@@ -738,6 +805,14 @@ namespace DoDad
         {
             CreateControllerAssignmentWindow();
             RoR2.UI.MainMenu.MainMenuController.instance.SetDesiredMenuScreen(ModMenuManager.ActiveScreens[PluginName]);
+        }
+        private static void OnClickJoinDiscord()
+        {
+            Application.OpenURL(MSG_DISCORD_LINK_HREF);
+        }
+        private static void OnClickOpenDebugFolder()
+        {
+            Application.OpenURL(Application.persistentDataPath);
         }
         private static void OnClickToggleSplitScreen()
         {
@@ -1130,14 +1205,7 @@ namespace DoDad
         #endregion
 
         #region Console Commands
-        [ConCommand(commandName = "xlog", flags = ConVarFlags.None, helpText = "Print device status to log")]
-        private static void ConXLog(ConCommandArgs args)
-        {
-            string file = $"{Application.persistentDataPath}/XSplitScreen-Debug.txt";
-            System.IO.File.AppendAllText(file, instance.OutputPlayerInputToLog(false));
-            Print($"File saved to '{file}");
-        }
-
+        
         [ConCommand(commandName = "xdevice_status", flags = ConVarFlags.None, helpText = "Controller assignment information")]
         private static void ConDeviceStatus(ConCommandArgs args)
         {

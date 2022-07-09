@@ -1,6 +1,12 @@
 # Description
 
-A GUI-based splitscreen mod
+A GUI-based splitscreen mod in development. My son really wanted to play Risk of Rain 2 together but all the splitscreen mods were broken by the latest updates. If you appreciate the work please join the Discord and try to play a game with us!
+
+https://discord.gg/maHhJSv62G
+
+Please see the Limitations section below for important information
+
+Looking for testers. Anyone with multiple gamepads or monitors is welcome to send me a DM to test new features.
 
 # Instructions
 
@@ -30,6 +36,7 @@ Commands that affect local users can only be used in the main menu
 - Configure controller assignment
 - Multi monitor support
 - Keyboard mode button
+- Risk of Options support
 
 ## Limitations
 
@@ -38,16 +45,23 @@ Commands that affect local users can only be used in the main menu
 
 ## Known Bugs
 
-- Sometimes the ability to type in the console is broken. Try disabling and enabling the mod again or enabling it with the console open
+- Opening rule panels do not work for gamepads but selecting the rules themselves do. Try using the mouse for now.
 - Occasionally loadouts aren't saved to the correct character
-- Gamepad players are unable to use the buttons in the right-hand pane on the character select screen - use the mouse for now
-- Both screens blur when opening the ingame scoreboard
+- Multiple gamepads with no keyboard is untested or broken
 
 ## Special thanks
 
 - iDeathHD for creating FixedSplitScreen
 
 ## Changelog
+
+**1.1.2**
+
+- Fixed chat and console
+- Most clickable UI buttons should work for the gamepad cursor now
+- Selecting items via the Command Artifact should be fixed
+- Removed screen blur when viewing scoreboard
+- Added Discord link and logging for better troubleshooting
 
 **1.1.1**
 
