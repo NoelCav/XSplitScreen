@@ -8,6 +8,7 @@ using UnityEngine.UI;
 using UnityEngine.Events;
 using RoR2.UI.SkinControllers;
 using RoR2;
+using DoDad.UI.Components;
 
 namespace DoDad.UI
 {
@@ -198,6 +199,24 @@ namespace DoDad.UI
             newPopup.SetActive(true);
 
             return newPopup;
+        }
+        public static GameObject CreateDraggable(string name)
+        {
+            GameObject draggable = new GameObject(name, typeof(RectTransform));
+
+            Image image = draggable.AddComponent<UnityEngine.UI.Image>();
+
+            image.preserveAspect = true;
+
+            draggable.AddComponent<ControllerDraggable>().enabled = false;
+
+            return draggable;
+        }
+        public static GameObject CreateImage(string name)
+        {
+            GameObject image = new GameObject(name, typeof(RectTransform), typeof(Image));
+
+            return image;
         }
         #endregion
 

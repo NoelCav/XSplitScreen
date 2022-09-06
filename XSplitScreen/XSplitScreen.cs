@@ -15,6 +15,14 @@ using DoDad.UI;
 using R2API;
 using RoR2.UI;
 using System.Text;
+using MonoMod.Cil;
+using System.Reflection;
+using UnityEngine.UI;
+using System.IO;
+using DoDad.UI.Components;
+using DoDad.Library;
+using BepInEx.Configuration;
+using System.Linq;
 
 /// <summary>
 /// Influenced by iDeathHD's FixedSplitScreen mod
@@ -25,7 +33,8 @@ using System.Text;
 /// </summary>
 namespace DoDad
 {
-    [BepInDependency(R2API.R2API.PluginGUID)]
+    [BepInDependency(R2API.R2API.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(DoDad.Library.Library.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
     [R2APISubmoduleDependency(new string[] { "CommandHelper", "LanguageAPI" })]
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
@@ -33,12 +42,36 @@ namespace DoDad
     {
         #region Variables
         public const string PluginGUID = PluginAuthor + "." + PluginName;
-        public const string PluginAuthor = "DoDad";
+        public const string PluginAuthor = "com.DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "1.1.2";
+        public const string PluginVersion = "1.2.2";
 
         private static readonly int MAX_LOCAL_PLAYERS = 4;
+        private static readonly Rect[][] verticalLayouts = new Rect[5][]
+        {
+            new Rect[0],
+            new Rect[1]{ new Rect(0.0f, 0.0f, 1f, 1f) },
+            new Rect[2]
+            {
+              new Rect(0.0f, 0.0f, 0.5f, 1f),
+              new Rect(0.5f, 0.0f, 0.5f, 1f)
+            },
+            new Rect[3]
+            {
+            new Rect(0.0f, 0.5f, 1f, 0.5f),
+            new Rect(0.0f, 0.0f, 0.5f, 0.5f),
+            new Rect(0.5f, 0.0f, 0.5f, 0.5f)
+            },
+            new Rect[4]
+            {
+            new Rect(0.0f, 0.5f, 0.5f, 0.5f),
+            new Rect(0.5f, 0.5f, 0.5f, 0.5f),
+            new Rect(0.0f, 0.0f, 0.5f, 0.5f),
+            new Rect(0.5f, 0.0f, 0.5f, 0.5f)
+            }
+        };
 
+        #region Messages
         private static readonly string MSG_DISCORD_LINK_HREF = "https://discord.gg/maHhJSv62G";
         private static readonly string MSG_DISCORD_LINK_STRING = "Discord";
         private static readonly string MSG_DISCORD_LINK_TOKEN = "XSPLITSCREEN_DISCORD";
@@ -51,7 +84,7 @@ namespace DoDad
         private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN = "XSPLITSCREEN_DEBUG_FILE_HOVER";
         private static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING = "Open the folder containing the XSplitScreen log";
         private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN = "XSPLITSCREEN_CONFIG_HEADER";
-        private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_STRING = "Under Construction";
+        private static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_STRING = "Input Assignment";
         private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN = "XSPLITSCREEN_ENABLE_HOVER";
         private static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_STRING = "Turn on XSplitScreen";
         private static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN = "XSPLITSCREEN_DISABLE_HOVER";
@@ -80,13 +113,17 @@ namespace DoDad
         private static readonly string MSG_INFO_EXIT = "Attempting to exit: your controllers may or may not work until you restart the game.";
         private static readonly string MSG_INFO_KEYBOARD_STATUS = "Keyboard mode requested";
         private static readonly string MSG_INFO_POTENTIAL_PLAYERS = "{0} potential users detected";
+        #endregion
 
         public static XSplitScreen instance;
-        /// <summary>
-        /// Called when the user clicks on Logbook or Singleplayer (should be any scene change)
-        /// </summary>
-        public static UnityAction DisableMenu;
-        public static UnityEvent OnLocalPlayerCount;
+
+        public static UnityEvent OnLocalPlayerCount = new UnityEvent();
+        public static SplitScreenUpdated OnSplitScreenUpdated = new SplitScreenUpdated();
+        //public static UnityAction DisableMenu;
+        
+        public static AssetBundle ResourceBundle;
+        public static SplitScreenConfiguration Configuration;
+
         public static bool Enabled => LocalPlayerCount > 1;
         public static int MaxPlayers
         {
@@ -105,9 +142,6 @@ namespace DoDad
         {
             protected set
             {
-                if (OnLocalPlayerCount == null)
-                    OnLocalPlayerCount = new UnityEvent();
-
                 _localPlayerCount = value;
                 OnLocalPlayerCount.Invoke();
             }
@@ -117,7 +151,7 @@ namespace DoDad
             }
         }
         public static bool KeyboardMode => instance._keyboardModeOnly || (_localPlayerCount == 1) || (instance._keyboardOptional && instance._requestKeyboard);
-        
+
         private static int _localPlayerCount = 1;
         private static bool OverwriteLogFile
         {
@@ -134,15 +168,27 @@ namespace DoDad
             }
         }
 
-        private Coroutine WaitFormenuLoad;
-        private RoR2.UI.MPEventSystem _lastEventSystem;
+        private Rect[][] _screenLayouts
+        {
+            get
+            {
+                if (_currentLayout == ScreenLayout.Horizontal)
+                    return RunCameraManager.screenLayouts;
+
+                return verticalLayouts;
+            }
+        }
+        private ScreenLayout _currentLayout = ScreenLayout.Vertical;
         private HGButton _titleButton;
         private GameObject _controllerAssignmentWindow;
 
+        private RoR2.UI.MPEventSystem _lastEventSystem;
+        private Coroutine WaitFormenuLoad;
+
         private int _playerBeginIndex => KeyboardMode ? 1 : 1;//1 : 2;
+
         private int _retryCounter = 0;
-        private bool _disableKeyboard = false;
-        private bool _devMode = false;
+        private bool _devMode = true;
         private bool _keyboardModeOnly = false;
         private bool _keyboardOptional = false;
         private bool _requestKeyboard = false;
@@ -161,27 +207,46 @@ namespace DoDad
                 Destroy(this);
 
             instance = this;
-            //DisableMenu = new UnityAction(XSplitScreen.instance.CleanupReferences);
-            LocalPlayerCount = 1;
-            OnLocalPlayerCount.AddListener(UpdateCursorStatus);
+            OnSplitScreenUpdated = new SplitScreenUpdated();
+            LocalPlayerCount = 1; // Should this be called before or after the next listener is added?
+
+            OnLocalPlayerCount.AddListener(UpdateCursorStatus); // Enables or disables the gamepad cursor when player count changes
 
             Log.Init(Logger);
             CommandHelper.AddToConsoleWhenReady();
 
-            Print(MSG_INFO_ENTER);
+            AddLanguageReferences();
+
+            LoadBundle();
+
+            InitializeConfiguration();
+
+            Print(MSG_INFO_ENTER); // Remove?
         }
         private void OnDestroy()
         {
             SetLocalPlayerCount(1);
             //DevModeTriggers(false);
             TogglePersistentHooks(false);
+            ResourceBundle.Unload(true);
             CleanupReferences();
+
             Print(MSG_INFO_EXIT);
         }
         public void Start()
         {
             TogglePersistentHooks(true);
             DevModeTriggers(_devMode);
+        }
+        public void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.F2))
+            {
+                if (_currentLayout == ScreenLayout.Horizontal)
+                    _currentLayout = ScreenLayout.Vertical;
+                else
+                    _currentLayout = ScreenLayout.Horizontal;
+            }
         }
         public void LateUpdate()
         {
@@ -211,9 +276,9 @@ namespace DoDad
         #endregion
 
         #region Public Methods
-        public bool SetLocalPlayerCount(int localPlayerCount, bool forceKeyboardSupport = false)
+        public bool SetLocalPlayerCount(int localPlayerCount, bool overrideMaxPlayers = false)
         {
-            int maxPlayers = MaxPlayers;
+            int maxPlayers = overrideMaxPlayers ? 4 : MaxPlayers;
 
             if (localPlayerCount < 1 || localPlayerCount > maxPlayers)
             {
@@ -249,6 +314,7 @@ namespace DoDad
             else
             {
                 _retryCounter = 0;
+                _lastEventSystem = LocalUserManager.GetFirstLocalUser().eventSystem;
                 WriteToLogFile(LogFileName, OutputPlayerInputToLog(false), OverwriteLogFile);
                 return success;
             }
@@ -257,6 +323,41 @@ namespace DoDad
         #endregion
 
         #region Private Methods
+        private void InitializeConfiguration()
+        {
+            // TODO load from config
+
+            if (Configuration == null)
+                Configuration = new SplitScreenConfiguration();
+
+            Configuration.Initialize(Config);
+        }
+        private void LoadBundle()
+        {
+            if(ResourceBundle == null)
+            {
+                using (Stream manifestResourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("XSplitScreen.xsplitscreenbundle"))
+                    ResourceBundle = AssetBundle.LoadFromStream(manifestResourceStream);
+            }
+        }
+        private void AddLanguageReferences()
+        {
+            LanguageAPI.Add(MSG_HOVER_TOKEN, MSG_HOVER_STRING);
+            LanguageAPI.Add(MSG_TITLE_BUTTON_TOKEN, MSG_TITLE_BUTTON_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN, MSG_SPLITSCREEN_ENABLE_HOVER_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN, MSG_SPLITSCREEN_DISABLE_HOVER_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_TOKEN, MSG_SPLITSCREEN_ENABLE_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_TOKEN, MSG_SPLITSCREEN_DISABLE_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN, MSG_SPLITSCREEN_CONFIG_HEADER_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_STRING);
+            LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING);
+            LanguageAPI.Add(MSG_DISCORD_LINK_TOKEN, MSG_DISCORD_LINK_STRING);
+            LanguageAPI.Add(MSG_DISCORD_LINK_HOVER_TOKEN, MSG_DISCORD_LINK_HOVER_STRING);
+        }
+        /// <summary>
+        /// Force the creation of the mod menu.
+        /// </summary>
+        /// <param name="enable"></param>
         private void DevModeTriggers(bool enable)
         {
             if (!enable)
@@ -264,32 +365,26 @@ namespace DoDad
 
             Print("DevMode");
             ToggleModMenu(enable);
-            //AddMainMenuCalls();
         }
+        /// <summary>
+        /// Set to true to react to scene changes
+        /// </summary>
+        /// <param name="status"></param>
         private void TogglePersistentHooks(bool status)
         {
             if(status)
             {
                 On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter += BaseMainMenuScreen_OnEnter;
-                //On.RoR2.HealthComponent.TakeDamage += HealthComponent_TakeDamage;
                 SceneManager.activeSceneChanged += SceneManager_activeSceneChanged;
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake; // move
             }
             else
             {
                 On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter -= BaseMainMenuScreen_OnEnter;
-                //On.RoR2.HealthComponent.TakeDamage -= HealthComponent_TakeDamage;
                 SceneManager.activeSceneChanged -= SceneManager_activeSceneChanged;
                 On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
             }
         }
-
-        private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
-        {
-            orig(self);
-            self._forceCursorForGamepad = true;
-        }
-
         private void HealthComponent_TakeDamage(On.RoR2.HealthComponent.orig_TakeDamage orig, HealthComponent self, DamageInfo damageInfo)
         {
             if(self.body.teamComponent.teamIndex == TeamIndex.Player)
@@ -298,39 +393,28 @@ namespace DoDad
             damageInfo.force = Vector3.zero;
             orig(self, damageInfo);
         }
-
-        private void ToggleModMenu(bool enable) // Call this function when the title screen is loaded, maybe on scene change?
+        /// <summary>
+        /// Create or destroy the mod menu.
+        /// </summary>
+        /// <param name="enable"></param>
+        private void ToggleModMenu(bool enable) 
         {
             if(enable)
             {
                 if (_titleButton == null)
                 {
-                    // TODO move this
-                    LanguageAPI.Add(MSG_HOVER_TOKEN, MSG_HOVER_STRING);
-                    LanguageAPI.Add(MSG_TITLE_BUTTON_TOKEN, MSG_TITLE_BUTTON_STRING);
-
-                    LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN, MSG_SPLITSCREEN_ENABLE_HOVER_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN, MSG_SPLITSCREEN_DISABLE_HOVER_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_ENABLE_TOKEN, MSG_SPLITSCREEN_ENABLE_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_DISABLE_TOKEN, MSG_SPLITSCREEN_DISABLE_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN, MSG_SPLITSCREEN_CONFIG_HEADER_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_STRING);
-                    LanguageAPI.Add(MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN, MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING);
-                    LanguageAPI.Add(MSG_DISCORD_LINK_TOKEN, MSG_DISCORD_LINK_STRING);
-                    LanguageAPI.Add(MSG_DISCORD_LINK_HOVER_TOKEN, MSG_DISCORD_LINK_HOVER_STRING);
-
-                    UILayer newLayer = ScriptableObject.CreateInstance<UILayer>();
+                    UILayer newLayer = ScriptableObject.CreateInstance<UILayer>(); // TODO Sort priority out
                     newLayer.name = PluginName;
                     newLayer.priority = 10;
 
-                    ModScreen userControllerScreen = ModMenuManager.AddScreen(PluginName, newLayer); 
+                    ModScreen modScreen = ModMenuManager.AddScreen(PluginName, newLayer); 
 
                     Quaternion forward = Quaternion.identity;
 
                     forward = Quaternion.AngleAxis(20f, Vector3.up);
                     forward *= Quaternion.AngleAxis(-40f, Vector3.right);
 
-                    userControllerScreen.SetCameraPosition(new Vector3(-10.8f, 601.2f, -424.2f), forward);
+                    modScreen.SetCameraPosition(new Vector3(-10.8f, 601.2f, -424.2f), forward);
 
                     _titleButton = ModMenuManager.CreateHGButton("XSplitScreen", MSG_TITLE_BUTTON_TOKEN, Menu.Title);
                     _titleButton.hoverToken = MSG_HOVER_TOKEN;
@@ -339,6 +423,7 @@ namespace DoDad
                     _titleButton.submitOnPointerUp = true;
                     _titleButton.onClick.AddListener(OnClickMainTitleButton);
 
+                    /* // Disabled while implementing assignment window
                     HGButton enableSplitScreenButton = ModMenuManager.CreateHGButton("EnableSplitScreen", MSG_TITLE_BUTTON_TOKEN, Menu.None, userControllerScreen);
                     enableSplitScreenButton.hoverToken = MSG_HOVER_TOKEN; // what is this for?
                     enableSplitScreenButton.updateTextOnHover = true;
@@ -354,25 +439,29 @@ namespace DoDad
                     component.OnDisabledToken = MSG_SPLITSCREEN_ENABLE_TOKEN;
                     component.OnDisabledHoverToken = MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN;
                     component.UpdateToken();
+                    
+                    */
 
-                    HGButton openDebugFolderButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, Menu.None, userControllerScreen);
+                    HGButton openDebugFolderButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, Menu.None, modScreen);
                     openDebugFolderButton.hoverToken = MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN;
                     openDebugFolderButton.updateTextOnHover = true;
                     openDebugFolderButton.submitOnPointerUp = true;
                     openDebugFolderButton.uiClickSoundOverride = "";
                     openDebugFolderButton.onClick.AddListener(OnClickOpenDebugFolder);
                     openDebugFolderButton.defaultFallbackButton = false;
-                    openDebugFolderButton.requiredTopLayer = userControllerScreen.GetComponent<UILayerKey>();
+                    openDebugFolderButton.requiredTopLayer = modScreen.GetComponent<UILayerKey>();
 
-                    HGButton openDiscordButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_DISCORD_LINK_TOKEN, Menu.None, userControllerScreen);
+                    HGButton openDiscordButton = ModMenuManager.CreateHGButton("OpenDebugFolder", MSG_DISCORD_LINK_TOKEN, Menu.None, modScreen);
                     openDiscordButton.hoverToken = MSG_DISCORD_LINK_HOVER_TOKEN;
                     openDiscordButton.updateTextOnHover = true;
                     openDiscordButton.submitOnPointerUp = true;
                     openDiscordButton.uiClickSoundOverride = "";
                     openDiscordButton.onClick.AddListener(OnClickJoinDiscord);
                     openDiscordButton.defaultFallbackButton = false;
-                    openDiscordButton.requiredTopLayer = userControllerScreen.GetComponent<UILayerKey>();
+                    openDiscordButton.requiredTopLayer = modScreen.GetComponent<UILayerKey>();
 
+                    CreateAssignmentWindow(modScreen);
+                    //CreateControllerAssignmentWindow();
 
                     WriteToLogFile(LogFileName, OutputPlayerInputToLog(false), OverwriteLogFile);
                 }
@@ -387,6 +476,31 @@ namespace DoDad
 
                 ModMenuManager.CleanupReferences();
             }
+        }
+        /// <summary>
+        /// Create the interactable controller assignment window. 
+        /// </summary>
+        private void CreateAssignmentWindow(ModScreen parent)
+        {
+            _controllerAssignmentWindow = ModMenuManager.CreatePopupPanel("ControllerAssignment", parent);
+
+            Destroy(_controllerAssignmentWindow.transform.GetChild(0).gameObject);
+
+            RectTransform assignmentTransform = _controllerAssignmentWindow.GetComponent<RectTransform>();
+            assignmentTransform.anchorMax = new Vector2(0.9f, 0.8f);
+            assignmentTransform.anchorMin = new Vector2(0.1f, 0.5f);
+
+            foreach (LanguageTextMeshController controller in _controllerAssignmentWindow.GetComponentsInChildren<LanguageTextMeshController>(true))
+            {
+                if (string.Compare(controller.name, "HeaderText") == 0)
+                    controller.token = MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN;
+            }
+
+            GameObject assignmentManager = _controllerAssignmentWindow.transform.GetChild(1).gameObject;
+            _controllerAssignmentWindow.gameObject.AddComponent<ControllerAssignmentManager>();
+            assignmentManager.SetActive(true);
+
+            //parent.GetComponent<CanvasScaler>().HandleScaleWithScreenSize();
         }
         private void CreateControllerAssignmentWindow()
         {
@@ -485,10 +599,15 @@ namespace DoDad
 
             if(Enabled)
             {
+                if (_devMode)
+                {
+                    On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
+                }
+                   // On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
+                On.RoR2.UI.SurvivorIconController.UpdateAvailability += SurvivorIconController_UpdateAvailability;
+
                 On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
                 On.RoR2.UI.RuleChoiceController.FindNetworkUser += RuleChoiceController_FindNetworkUser;
-                On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
-                On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
                 //On.RoR2.UI.SurvivorIconController.GetLocalUser += SurvivorIconController_GetLocalUser;
                // On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
                 //On.RoR2.UI.CharacterSelectController.RebuildLocal += CharacterSelectController_RebuildLocal;
@@ -503,16 +622,35 @@ namespace DoDad
                 //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // yes
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // yes
-                On.RoR2.UI.CharacterSelectController.OnEnable += CharacterSelectController_OnEnable; // no
+                //On.RoR2.UI.CharacterSelectController.OnEnable += CharacterSelectController_OnEnable; // no
                 On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon; // yes
+
+                On.RoR2.RunCameraManager.Update += RunCameraManager_Update;
+                /*
+                IL.RoR2.RunCameraManager.Update += (il) =>
+                {
+                    
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                        x => x.MatchLdsfld(typeof(RunCameraManager).GetField("screenLayouts",(BindingFlags)(-1)))
+                        x => x.ldloc
+                        );
+                    Debug.Log(c);
+
+                    c.Next.Operand = _currentLayout;
+                };*/
             }
             else
             {
+                if(_devMode)
+                {
+                    On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
+                }
+                   // On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
                 //Print("DISABLING ALL HOOKS");
+                On.RoR2.RunCameraManager.Update -= RunCameraManager_Update;
                 On.RoR2.UI.ScoreboardController.Awake -= ScoreboardController_Awake;
                 On.RoR2.UI.RuleChoiceController.FindNetworkUser -= RuleChoiceController_FindNetworkUser;
-                On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
-                On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
                 //On.RoR2.UI.SurvivorIconController.GetLocalUser -= SurvivorIconController_GetLocalUser;
                 //On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
                 //On.RoR2.UI.CharacterSelectController.RebuildLocal -= CharacterSelectController_RebuildLocal;
@@ -527,46 +665,111 @@ namespace DoDad
                 //On.RoR2.UI.MPButton.OnPointerExit += MPButton_OnPointerExit;
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
-                On.RoR2.UI.CharacterSelectController.OnEnable -= CharacterSelectController_OnEnable; 
+                //On.RoR2.UI.CharacterSelectController.OnEnable -= CharacterSelectController_OnEnable; 
                 On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
             }
             
             return true;
         }
 
+        private void SurvivorIconController_UpdateAvailability(On.RoR2.UI.SurvivorIconController.orig_UpdateAvailability orig, SurvivorIconController self)
+        {
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorIsUnlocked, SurvivorCatalog.SurvivorIsUnlockedOnThisClient(self.survivorIndex));
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorRequiredExpansionEnabled, self.survivorDef.CheckRequiredExpansionEnabled((NetworkUser)null));
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorRequiredEntitlementAvailable, self.survivorDef.CheckUserHasRequiredEntitlement(LocalUserManager.GetFirstLocalUser()));//self.GetLocalUser()));
+            self.survivorIsAvailable = self.survivorIsUnlocked && self.survivorRequiredExpansionEnabled && self.survivorRequiredEntitlementAvailable;
+        }
+
+        private void RunCameraManager_Update(On.RoR2.RunCameraManager.orig_Update orig, RunCameraManager self)
+        {
+            bool instance = Stage.instance;
+            if (instance)
+            {
+                int index = 0;
+                for (int count = CameraRigController.readOnlyInstancesList.Count; index < count; ++index)
+                {
+                    if (CameraRigController.readOnlyInstancesList[index].suppressPlayerCameras)
+                        return;
+                }
+            }
+            if (instance)
+            {
+                int index1 = 0;
+                System.Collections.ObjectModel.ReadOnlyCollection<NetworkUser> localPlayersList = NetworkUser.readOnlyLocalPlayersList;
+                for (int index2 = 0; index2 < localPlayersList.Count; ++index2)
+                {
+                    NetworkUser networkUser = localPlayersList[index2];
+                    CameraRigController cameraRigController = self.cameras[index1];
+                    if (!cameraRigController)
+                    {
+                        cameraRigController = GameObject.Instantiate<GameObject>(LegacyResourcesAPI.Load<GameObject>("Prefabs/Main Camera")).GetComponent<CameraRigController>();
+                        self.cameras[index1] = cameraRigController;
+                    }
+                    cameraRigController.viewer = networkUser;
+                    networkUser.cameraRigController = cameraRigController;
+                    GameObject networkUserBodyObject = RunCameraManager.GetNetworkUserBodyObject(networkUser);
+                    ForceSpectate forceSpectate = InstanceTracker.FirstOrNull<ForceSpectate>();
+                    if (forceSpectate)
+                    {
+                        cameraRigController.nextTarget = forceSpectate.target;
+                        cameraRigController.cameraMode = (RoR2.CameraModes.CameraModeBase)RoR2.CameraModes.CameraModePlayerBasic.spectator;
+                    }
+                    else if (networkUserBodyObject)
+                    {
+                        cameraRigController.nextTarget = networkUserBodyObject;
+                        cameraRigController.cameraMode = (RoR2.CameraModes.CameraModeBase)RoR2.CameraModes.CameraModePlayerBasic.playerBasic;
+                    }
+                    else if (!cameraRigController.disableSpectating)
+                    {
+                        cameraRigController.cameraMode = (RoR2.CameraModes.CameraModeBase)RoR2.CameraModes.CameraModePlayerBasic.spectator;
+                        if (!cameraRigController.target)
+                            cameraRigController.nextTarget = CameraRigControllerSpectateControls.GetNextSpectateGameObject(networkUser, (GameObject)null);
+                    }
+                    else
+                        cameraRigController.cameraMode = (RoR2.CameraModes.CameraModeBase)RoR2.CameraModes.CameraModeNone.instance;
+                    ++index1;
+                }
+                int index3 = index1;
+                for (int index2 = index1; index2 < self.cameras.Length; ++index2)
+                {
+                    ref CameraRigController local = ref self.cameras[index1];
+                    if (local != null)
+                    {
+                        if (local)
+                            GameObject.Destroy(self.cameras[index1].gameObject);
+                        local = (CameraRigController)null;
+                    }
+                }
+                Rect[] screenLayout = _screenLayouts[index3];
+                for (int index2 = 0; index2 < index3; ++index2)
+                    self.cameras[index2].viewport = screenLayout[index2];
+            }
+            else
+            {
+                for (int index = 0; index < self.cameras.Length; ++index)
+                {
+                    if (self.cameras[index])
+                        GameObject.Destroy(self.cameras[index].gameObject);
+                }
+            }
+        }
         private void ScoreboardController_Awake(On.RoR2.UI.ScoreboardController.orig_Awake orig, ScoreboardController self)
         {
             orig(self);
 
             self.transform.GetComponentInChildren<PostProcessDuration>().gameObject.SetActive(false);
         }
-
         private NetworkUser RuleChoiceController_FindNetworkUser(On.RoR2.UI.RuleChoiceController.orig_FindNetworkUser orig, RuleChoiceController self)
         {
             // Fix rule selection
             return _lastEventSystem?.localUser.currentNetworkUser;
         }
-
         private LocalUser SurvivorIconController_GetLocalUser(On.RoR2.UI.SurvivorIconController.orig_GetLocalUser orig, SurvivorIconController self)
         {
             // Fix entitlement selection
-            return _lastEventSystem.localUser;
+            //return LocalUserManager.GetFirstLocalUser().eventSystem.localUser;
+            return _lastEventSystem.localUser == null ? ((MPEventSystem) EventSystem.current).localUser : _lastEventSystem.localUser;
         }
-
-        private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
-        {
-            // Fix debug spam
-            if (EventSystem.current == null)
-                return;
-
-            MPEventSystem system = EventSystem.current as MPEventSystem;
-
-            if (system == null)
-                return;
-
-            orig(self);
-        }
-
         private bool MPButton_CanBeSelected(On.RoR2.UI.MPButton.orig_CanBeSelected orig, MPButton self)
         {
             if (!self.gameObject.activeInHierarchy)
@@ -574,7 +777,6 @@ namespace DoDad
 
             return true;
         }
-
         private bool ToggleControllers(bool valid = true)
         {
             if (!valid)
@@ -590,7 +792,7 @@ namespace DoDad
 
             foreach (Controller controller in ReInput.controllers.Controllers)
             {
-                if(controller.type == ControllerType.Joystick || KeyboardMode)
+                if((controller.type == ControllerType.Custom || controller.type == ControllerType.Joystick) || KeyboardMode && string.Compare(controller.name.ToLower(), "unknown") != 0)
                     joystickList.Add(controller);
             }
 
@@ -664,6 +866,7 @@ namespace DoDad
             */
             return true;
         }
+        
         private int EstimateJoysticks()
         {
             int potentialUsers = 0;
@@ -676,19 +879,23 @@ namespace DoDad
 
             foreach(Controller controller in ReInput.controllers.Controllers)
             {
-                switch(controller.identifier.controllerType)
+                if(string.Compare(controller.name.ToLower(), "unknown") != 0)
                 {
-                    case ControllerType.Joystick:
-                        totalJoysticks++;
-                        break;
-                    case ControllerType.Keyboard:
-                        keyboardMouse++;
-                        break;
-                    case ControllerType.Mouse:
-                        keyboardMouse++;
-                        break;
-                    default:
-                        break;
+                    switch (controller.identifier.controllerType)
+                    {
+                       // case ControllerType.Joystick: // removed to test controller not being detected bug
+                        //    totalJoysticks++;
+                        //    break;
+                        case ControllerType.Keyboard:
+                            keyboardMouse++;
+                            break;
+                        case ControllerType.Mouse:
+                            keyboardMouse++;
+                            break;
+                        default:
+                            totalJoysticks++;
+                            break;
+                    }
                 }
             }
 
@@ -724,6 +931,7 @@ namespace DoDad
             //GameObject.Find("GenericMenuButton (Singleplayer)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
             //GameObject.Find("GenericMenuButton (Logbook)").GetComponent<HGButton>().onClick.RemoveListener(DisableMenu);
             ToggleModMenu(false);
+            Configuration.Exit();
         }
         private void SwapProfiles(int firstPlayerIndex, int secondPlayerIndex)
         {
@@ -798,12 +1006,54 @@ namespace DoDad
 
             Print(string.Format(MSG_INFO_DEBUG_SAVED, file));
         }
+        private string OutputControllersToLog()
+        {
+            StringBuilder builder = new StringBuilder();
+
+            builder.AppendLine("Detected Controllers\n");
+
+            int count = 0;
+
+            foreach (Controller controller in ReInput.controllers.Controllers)
+            {
+                string profileName = "none";
+                int userIndex = -1;
+
+                for(int e = 0; e < LocalPlayerCount; e++)
+                {
+                    LocalUser user = LocalUserManager.readOnlyLocalUsersList[e];
+
+                    if (user.inputPlayer.controllers.ContainsController(controller.type, controller.id))
+                    {
+                        profileName = user.userProfile.name;
+                        userIndex = e;
+                    }
+                }
+
+                builder.AppendLine($"[{count}] {controller.name} assigned to user '[{(userIndex > -1 ? userIndex : "")}] {profileName}'");
+                count++;
+            }
+
+            return builder.ToString();
+        }
         #endregion
 
         #region Event Handlers / Hooks
+        private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
+        {
+            // Fix debug spam
+            if (EventSystem.current == null)
+                return;
+
+            MPEventSystem system = EventSystem.current as MPEventSystem;
+
+            if (system == null)
+                return;
+
+            orig(self);
+        }
         private void OnClickMainTitleButton()
         {
-            CreateControllerAssignmentWindow();
             RoR2.UI.MainMenu.MainMenuController.instance.SetDesiredMenuScreen(ModMenuManager.ActiveScreens[PluginName]);
         }
         private static void OnClickJoinDiscord()
@@ -827,25 +1077,36 @@ namespace DoDad
                 XSplitScreen.instance.SetLocalPlayerCount(1);
             }
         }
+        private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
+        {
+            orig(self);
+            self._forceCursorForGamepad = true;
+        }
+        /// <summary>
+        /// Enable or disable the cursor
+        /// </summary>
         private void UpdateCursorStatus()
         {
             CursorOpener[] openers = GameObject.FindObjectsOfType<CursorOpener>();
 
             foreach (CursorOpener opener in openers)
             {
-                //Print($"Setting {opener.name} to true");
                 opener.forceCursorForGamePad = Enabled;
             }
 
-            if (!XSplitScreen.Enabled)
+            if (!Enabled)
             {
                 foreach (MPEventSystem instance in MPEventSystem.instancesList)
                 {
-                   // Print($"UpdateCursorStatus setting SelectedGameObject to null");
                     instance.SetSelectedGameObject(null);
                 }
             }
         }
+        /// <summary>
+        /// If the new scene is 'title' then we need to start a coroutine that will create the mod menu. Afterwards update the cursor status. TODO: Do we need a coroutine to wait until everything is loaded to update the cursor status?
+        /// </summary>
+        /// <param name="arg0"></param>
+        /// <param name="arg1"></param>
         private void SceneManager_activeSceneChanged(Scene arg0, Scene arg1)
         {
             if (string.Compare(arg1.name, "title") == 0)
@@ -862,6 +1123,12 @@ namespace DoDad
 
             UpdateCursorStatus();
         }
+        /// <summary>
+        /// Notify WaitForMenuCoroutine that we've entered the main menu
+        /// </summary>
+        /// <param name="orig"></param>
+        /// <param name="self"></param>
+        /// <param name="mainMenuController"></param>
         private void BaseMainMenuScreen_OnEnter(On.RoR2.UI.MainMenu.BaseMainMenuScreen.orig_OnEnter orig, RoR2.UI.MainMenu.BaseMainMenuScreen self, RoR2.UI.MainMenu.MainMenuController mainMenuController)
         {
             orig(self, mainMenuController);
@@ -1206,10 +1473,63 @@ namespace DoDad
 
         #region Console Commands
         
-        [ConCommand(commandName = "xdevice_status", flags = ConVarFlags.None, helpText = "Controller assignment information")]
+        [ConCommand(commandName = "xassign", flags = ConVarFlags.None, helpText = "Assign controllers by index. Type 'xdevices' for IDs. Useage: xassign [controller id] [player id]")]
+        private static void ConAssign(ConCommandArgs args)
+        {
+            int controllerId = args.GetArgInt(0);
+            int playerId = args.GetArgInt(1);
+
+            bool controllerFound = false;
+            bool playerFound = false;
+
+            if (controllerId > -1 && controllerId < ReInput.controllers.Controllers.Count)
+                controllerFound = true;
+
+            if(playerId > -1 &&  playerId < LocalPlayerCount)
+            {
+                playerFound = true;
+            }
+
+            if (!controllerFound)
+                Print("Controller not found. Type 'xdevices' to see available controllers.");
+
+            if (!playerFound)
+                Print("Player not found. Type 'xsplitset #' to add local players.");
+
+            if (!(playerFound && controllerFound))
+                return;
+
+            int controllerCount = 0;
+
+            foreach (Controller controller in ReInput.controllers.Controllers) // lazy I know
+            {
+                if (controllerCount == controllerId)
+                {
+                    for(int e = 0; e < LocalPlayerCount; e++)
+                    {
+                        LocalUser user = LocalUserManager.readOnlyLocalUsersList[e];
+
+                        user.inputPlayer.controllers.RemoveController(controller.type, controller.id);
+
+                        if (e == playerId)
+                        {
+                            Print($"Adding '{controller.name}' to '{user.userProfile.name}'");
+                            user.inputPlayer.controllers.AddController(controller, false);
+                            user.ApplyUserProfileBindingstoRewiredController(controller);
+                        }
+                    }
+                }
+
+                controllerCount++;
+            }
+        }
+        [ConCommand(commandName = "xdevices", flags = ConVarFlags.None, helpText = "Controller assignment information")]
         private static void ConDeviceStatus(ConCommandArgs args)
         {
-            instance.OutputPlayerInputToLog();
+           // if (instance._devMode)
+            //    instance.OutputPlayerInputToLog(true);
+
+            Print(instance.OutputControllersToLog());
         }
         [ConCommand(commandName = "xsplitswap", flags = ConVarFlags.None, helpText = "Swap players by index. Useage: xsplit # #")]
         private static void ConXSplitSwap(ConCommandArgs args)
@@ -1261,7 +1581,7 @@ namespace DoDad
             if (instance._requestKeyboard)
                 Print(MSG_INFO_KEYBOARD_STATUS, Log.LogLevel.Debug);
 
-            instance.SetLocalPlayerCount(requestedLocalPlayerCount);
+            instance.SetLocalPlayerCount(requestedLocalPlayerCount, true);
         }
         #endregion
 
@@ -1343,6 +1663,194 @@ namespace DoDad
             _enteredMenu = false;
 
             yield return null;
+        }
+        public class SplitScreenUpdated : UnityEvent<SplitScreenConfiguration> { }
+        public enum ScreenLayout
+        {
+            Horizontal,
+            Vertical
+        }
+
+        [System.Serializable]
+        public class SplitScreenConfiguration
+        {
+            public Dictionary<string, ControllerAssignment> ControllerAssignments; // deviceInstanceGuid
+
+            private ConfigEntry<string> ControllerAssignmentPreferencesJson;
+            private ConfigEntry<bool> StartOnLoad;
+
+            private ConfigFile config;
+
+            private int DefaultPlayerCount;
+
+            public void Initialize(ConfigFile config)
+            {
+                this.config = config;
+                ControllerAssignments = new Dictionary<string, ControllerAssignment>();
+
+                try
+                {
+                    ControllerAssignmentPreferencesJson = config.Bind<string>("General", "Controller Assignment Preferences", "", "Persistent device preferences");
+                    StartOnLoad = config.Bind<bool>("General", "Plugin Settings", false, "Should the plugin start on launch?");
+                }
+                catch(Exception e)
+                {
+                    Print("Placeholder Error - Unable to load config file");
+                }
+
+                if (ControllerAssignmentPreferencesJson.Value.Length > 0)
+                {
+                    try
+                    {
+                        ConfigDataWrapper wrapper = JsonUtility.FromJson<ConfigDataWrapper>(ControllerAssignmentPreferencesJson.Value);
+
+                        for(int index = 0; index < wrapper.AssignedDeviceInstanceGuid.Length; index++)
+                        {
+                            ControllerAssignments.Add(wrapper.AssignedDeviceInstanceGuid[index].ToString(), new ControllerAssignment()
+                            {
+                                AssignedDeviceInstanceGuid = wrapper.AssignedDeviceInstanceGuid[index],
+                                AssignedDisplay = wrapper.AssignedDisplay[index],
+                                AssignedProfile = wrapper.AssignedProfile[index],
+                                AssignedScreen = wrapper.AssignedScreen[index]
+                            });
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Print("Placeholder Error - Unable to parse config file");
+                    }
+                }
+
+                // Create default config file
+                
+                ReloadEntries();
+
+                ReInput.ControllerConnectedEvent += ReloadEntries;
+                ReInput.ControllerDisconnectedEvent += ReloadEntries;
+            }
+
+            public void Exit()
+            {
+                ReInput.ControllerConnectedEvent -= ReloadEntries;
+                ReInput.ControllerDisconnectedEvent -= ReloadEntries;
+
+                Save();
+            }
+            public void ReloadEntries(Rewired.ControllerStatusChangedEventArgs args = null)
+            {
+                // Send event to update Draggables when done
+                // Why? Just wait to receive data from the UI
+                // Draggables handle their own creation and need nothing from this class
+
+                bool foundKeyboard = false;
+
+                foreach (Controller controller in ReInput.controllers.Controllers)
+                {
+                    int assignedDisplay = -1;
+                    int assignedScreen = -1;
+
+                    string assignedProfile = "";
+
+                    bool preferenceExists = false;
+
+                    if (controller.type == ControllerType.Keyboard)
+                    {
+                        if (foundKeyboard)
+                            continue;
+
+                        foundKeyboard = true;
+
+                        assignedDisplay = 0;
+                        assignedScreen = 0;
+                        assignedProfile = LocalUserManager.GetFirstLocalUser().userProfile.name;
+                    }
+
+                    foreach (KeyValuePair<string, ControllerAssignment> entry in ControllerAssignments)
+                    {
+                        if(string.Compare(entry.Value.AssignedDeviceInstanceGuid, controller.deviceInstanceGuid.ToString()) == 0)
+                        {
+                            preferenceExists = true;
+                            break;
+                        }
+                    }
+
+                    if(!preferenceExists)
+                    {
+                        ControllerAssignments.Add(controller.deviceInstanceGuid.ToString(), new ControllerAssignment()
+                        {
+                            AssignedDeviceInstanceGuid = controller.deviceInstanceGuid.ToString(),
+                            AssignedDisplay = assignedDisplay,
+                            AssignedProfile = assignedProfile,
+                            AssignedScreen = assignedScreen
+                        });
+                    }
+                }
+
+                Save();
+            }
+
+            public bool Save()
+            {
+                bool status = true;
+
+                StartOnLoad.Value = XSplitScreen.Enabled;
+
+                List<ControllerAssignment> list = new List<ControllerAssignment>();
+
+                foreach(KeyValuePair<string, ControllerAssignment> entry in ControllerAssignments)
+                {
+                    list.Add(entry.Value);
+                }
+
+                ConfigDataWrapper wrapper = new ConfigDataWrapper(list);
+
+                try
+                {
+                    ControllerAssignmentPreferencesJson.Value = JsonUtility.ToJson(wrapper);
+                }
+                catch(Exception e)
+                {
+                    Print("Placeholder Error - Unable to write profile to JSON");
+                }
+
+                config.Save();
+                return status;
+            }
+            
+            [System.Serializable]
+            public struct ControllerAssignment
+            {
+                public string AssignedDeviceInstanceGuid;
+                public string AssignedProfile;
+                public int AssignedDisplay;
+                public int AssignedScreen;
+            }
+
+
+            [System.Serializable]
+            private class ConfigDataWrapper
+            {
+                public ConfigDataWrapper(List<ControllerAssignment> data)
+                {
+                    AssignedDeviceInstanceGuid = new string[data.Count];
+                    AssignedProfile = new string[data.Count];
+                    AssignedDisplay = new int[data.Count];
+                    AssignedScreen = new int[data.Count];
+
+                    for (int e = 0; e < data.Count; e++)
+                    {
+                        AssignedDeviceInstanceGuid[e] = data[e].AssignedDeviceInstanceGuid;
+                        AssignedProfile[e] = data[e].AssignedProfile;
+                        AssignedDisplay[e] = data[e].AssignedDisplay;
+                        AssignedScreen[e] = data[e].AssignedScreen;
+                    }
+                }
+
+                public string[] AssignedDeviceInstanceGuid;
+                public string[] AssignedProfile;
+                public int[] AssignedDisplay;
+                public int[] AssignedScreen;
+            }
         }
         #endregion
     }

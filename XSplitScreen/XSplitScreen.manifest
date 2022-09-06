@@ -1,0 +1,10 @@
+ManifestFileVersion: 0
+CRC: 1097990003
+AssetBundleManifest:
+  AssetBundleInfos:
+    Info_0:
+      Name: xfundamagebundle
+      Dependencies: {}
+    Info_1:
+      Name: xsplitscreenbundle
+      Dependencies: {}
