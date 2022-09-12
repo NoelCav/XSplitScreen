@@ -13,9 +13,8 @@ using DoDad.UI.Components;
 namespace DoDad.UI
 {
     /// <summary>
-    /// Should only work in the title scene!
-    /// TODO: Maybe just add a Clone method
-    /// TODO: Set parent by string
+    /// TODO: This entire class should be rewritten without references to XSplitScreen to allow
+    /// use across different plugins.
     /// </summary>
     public static class ModMenuManager
     {
@@ -208,7 +207,7 @@ namespace DoDad.UI
 
             image.preserveAspect = true;
 
-            draggable.AddComponent<ControllerDraggable>().enabled = false;
+            draggable.AddComponent<ControllerIcon>().enabled = false;
 
             return draggable;
         }
@@ -216,8 +215,11 @@ namespace DoDad.UI
         {
             GameObject image = new GameObject(name, typeof(RectTransform), typeof(Image));
 
+            image.GetComponent<UnityEngine.UI.Image>().preserveAspect = true;
+
             return image;
         }
+        
         #endregion
 
         #region Private Methods

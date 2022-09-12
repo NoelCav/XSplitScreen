@@ -1,9 +1,9 @@
 ManifestFileVersion: 0
-CRC: 1559559707
+CRC: 324701103
 Hashes:
   AssetFileHash:
     serializedVersion: 2
-    Hash: ee83950d8b010fbb6332021358d9a542
+    Hash: 69cc0aa89708468b817888fbb88087ec
   TypeTreeHash:
     serializedVersion: 2
     Hash: c90fc19e2679e5295d10bd00f33cb4c3
@@ -15,9 +15,12 @@ ClassTypes:
   Script: {instanceID: 0}
 SerializeReferenceClassIdentifiers: []
 Assets:
+- Assets/DoDad/Textures/xmark.png
+- Assets/DoDad/Textures/unknown.png
 - Assets/DoDad/Textures/display.png
 - Assets/DoDad/Textures/divider.png
 - Assets/DoDad/Textures/keyboardmouse.png
+- Assets/DoDad/Textures/checkmark.png
 - Assets/DoDad/Textures/xinput.png
 - Assets/DoDad/Textures/dinput.png
 Dependencies: []

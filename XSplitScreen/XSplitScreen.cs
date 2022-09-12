@@ -23,6 +23,7 @@ using DoDad.UI.Components;
 using DoDad.Library;
 using BepInEx.Configuration;
 using System.Linq;
+using DoDad.Library.Math;
 
 /// <summary>
 /// Influenced by iDeathHD's FixedSplitScreen mod
@@ -122,7 +123,7 @@ namespace DoDad
         //public static UnityAction DisableMenu;
         
         public static AssetBundle ResourceBundle;
-        public static SplitScreenConfiguration Configuration;
+        public static SplitScreenConfiguration Configuration { get { return instance._configuration; } }
 
         public static bool Enabled => LocalPlayerCount > 1;
         public static int MaxPlayers
@@ -168,6 +169,8 @@ namespace DoDad
             }
         }
 
+        private SplitScreenConfiguration _configuration;
+
         private Rect[][] _screenLayouts
         {
             get
@@ -182,7 +185,7 @@ namespace DoDad
         private HGButton _titleButton;
         private GameObject _controllerAssignmentWindow;
 
-        private RoR2.UI.MPEventSystem _lastEventSystem;
+        public RoR2.UI.MPEventSystem _lastEventSystem;
         private Coroutine WaitFormenuLoad;
 
         private int _playerBeginIndex => KeyboardMode ? 1 : 1;//1 : 2;
@@ -214,11 +217,8 @@ namespace DoDad
 
             Log.Init(Logger);
             CommandHelper.AddToConsoleWhenReady();
-
             AddLanguageReferences();
-
             LoadBundle();
-
             InitializeConfiguration();
 
             Print(MSG_INFO_ENTER); // Remove?
@@ -328,7 +328,7 @@ namespace DoDad
             // TODO load from config
 
             if (Configuration == null)
-                Configuration = new SplitScreenConfiguration();
+                _configuration = new SplitScreenConfiguration();
 
             Configuration.Initialize(Config);
         }
@@ -497,7 +497,7 @@ namespace DoDad
             }
 
             GameObject assignmentManager = _controllerAssignmentWindow.transform.GetChild(1).gameObject;
-            _controllerAssignmentWindow.gameObject.AddComponent<ControllerAssignmentManager>();
+            _controllerAssignmentWindow.gameObject.AddComponent<SplitscreenConfigurationManager>();
             assignmentManager.SetActive(true);
 
             //parent.GetComponent<CanvasScaler>().HandleScaleWithScreenSize();
@@ -1674,44 +1674,80 @@ namespace DoDad
         [System.Serializable]
         public class SplitScreenConfiguration
         {
-            public Dictionary<string, ControllerAssignment> ControllerAssignments; // deviceInstanceGuid
+            #region Variables
+            public ControllerAssignedEvent OnSplitscreenDeviceConnected 
+            { 
+                get
+                {
+                    return _controllerAssigned;
+                } 
+            }
+            public List<ControllerAssignment> ControllerAssignments
+            {
+                get
+                { 
+                    ControllerAssignment[] list = new ControllerAssignment[_controllerAssignments.Count];
 
-            private ConfigEntry<string> ControllerAssignmentPreferencesJson;
-            private ConfigEntry<bool> StartOnLoad;
+                    _controllerAssignments.CopyTo(list);
 
-            private ConfigFile config;
+                    return list.ToList<ControllerAssignment>();
+                }
+            }
+            public int DefaultPlayerCount
+            {
+                get
+                {
+                    return _defaultPlayerCountConfig.Value;
+                }
+            }
 
-            private int DefaultPlayerCount;
+            //public Dictionary<int, ControllerAssignment> ControllerAssignments; // Controller.id
 
+            private ConfigEntry<string> _controllerAssignmentsConfig;
+            private ConfigEntry<bool> _startOnLoadConfig;
+            private ConfigEntry<int> _defaultPlayerCountConfig;
+            private ConfigFile _config;
+
+            private ControllerAssignedEvent _controllerAssigned;
+            private List<ControllerAssignment> _controllerAssignments;
+
+            // Should serve as both the desired player count and the indicator for "StartOnLoad"
+            #endregion
+
+            #region Initialization & Exit
             public void Initialize(ConfigFile config)
             {
-                this.config = config;
-                ControllerAssignments = new Dictionary<string, ControllerAssignment>();
+                _config = config;
+
+                _controllerAssignments = new List<ControllerAssignment>();
+                _controllerAssigned = new ControllerAssignedEvent();
 
                 try
                 {
-                    ControllerAssignmentPreferencesJson = config.Bind<string>("General", "Controller Assignment Preferences", "", "Persistent device preferences");
-                    StartOnLoad = config.Bind<bool>("General", "Plugin Settings", false, "Should the plugin start on launch?");
+                    _controllerAssignmentsConfig = config.Bind<string>("General", "Controller Assignment Preferences", "", "Persistent device preferences");
+                    _startOnLoadConfig = config.Bind<bool>("General", "Plugin Settings", false, "Should the plugin start on launch?");
+                    //_defaultPlayerCountConfig = config.Bind<int>("General", "Plugin Settings", 1, "How many players should be logged in?");
                 }
                 catch(Exception e)
                 {
                     Print("Placeholder Error - Unable to load config file");
                 }
 
-                if (ControllerAssignmentPreferencesJson.Value.Length > 0)
+                if (_controllerAssignmentsConfig.Value.Length > 0)
                 {
                     try
                     {
-                        ConfigDataWrapper wrapper = JsonUtility.FromJson<ConfigDataWrapper>(ControllerAssignmentPreferencesJson.Value);
+                        ConfigDataWrapper wrapper = JsonUtility.FromJson<ConfigDataWrapper>(_controllerAssignmentsConfig.Value);
 
-                        for(int index = 0; index < wrapper.AssignedDeviceInstanceGuid.Length; index++)
+                        for(int index = 0; index < wrapper.AssignedDeviceId.Length; index++)
                         {
-                            ControllerAssignments.Add(wrapper.AssignedDeviceInstanceGuid[index].ToString(), new ControllerAssignment()
+                            _controllerAssignments.Add(new ControllerAssignment()
                             {
-                                AssignedDeviceInstanceGuid = wrapper.AssignedDeviceInstanceGuid[index],
+                                AssignedDeviceId = wrapper.AssignedDeviceId[index],
                                 AssignedDisplay = wrapper.AssignedDisplay[index],
                                 AssignedProfile = wrapper.AssignedProfile[index],
-                                AssignedScreen = wrapper.AssignedScreen[index]
+                                AssignedScreen = wrapper.AssignedScreen[index],
+                                IsKeyboard = wrapper.IsKeyboard[index]
                             });
                         }
                     }
@@ -1725,132 +1761,164 @@ namespace DoDad
                 
                 ReloadEntries();
 
-                ReInput.ControllerConnectedEvent += ReloadEntries;
-                ReInput.ControllerDisconnectedEvent += ReloadEntries;
+                ReInput.ControllerConnectedEvent += OnControllerConnected;
             }
-
             public void Exit()
             {
-                ReInput.ControllerConnectedEvent -= ReloadEntries;
-                ReInput.ControllerDisconnectedEvent -= ReloadEntries;
+                ReInput.ControllerConnectedEvent -= OnControllerConnected;
 
                 Save();
             }
-            public void ReloadEntries(Rewired.ControllerStatusChangedEventArgs args = null)
+            #endregion
+
+            #region Entries
+            private void ReloadEntries()
             {
-                // Send event to update Draggables when done
-                // Why? Just wait to receive data from the UI
-                // Draggables handle their own creation and need nothing from this class
-
-                bool foundKeyboard = false;
-
                 foreach (Controller controller in ReInput.controllers.Controllers)
                 {
-                    int assignedDisplay = -1;
-                    int assignedScreen = -1;
-
-                    string assignedProfile = "";
-
-                    bool preferenceExists = false;
-
-                    if (controller.type == ControllerType.Keyboard)
-                    {
-                        if (foundKeyboard)
-                            continue;
-
-                        foundKeyboard = true;
-
-                        assignedDisplay = 0;
-                        assignedScreen = 0;
-                        assignedProfile = LocalUserManager.GetFirstLocalUser().userProfile.name;
-                    }
-
-                    foreach (KeyValuePair<string, ControllerAssignment> entry in ControllerAssignments)
-                    {
-                        if(string.Compare(entry.Value.AssignedDeviceInstanceGuid, controller.deviceInstanceGuid.ToString()) == 0)
-                        {
-                            preferenceExists = true;
-                            break;
-                        }
-                    }
-
-                    if(!preferenceExists)
-                    {
-                        ControllerAssignments.Add(controller.deviceInstanceGuid.ToString(), new ControllerAssignment()
-                        {
-                            AssignedDeviceInstanceGuid = controller.deviceInstanceGuid.ToString(),
-                            AssignedDisplay = assignedDisplay,
-                            AssignedProfile = assignedProfile,
-                            AssignedScreen = assignedScreen
-                        });
-                    }
+                    EnsureAssignmentExists(controller);
                 }
-
-                Save();
             }
-
             public bool Save()
             {
                 bool status = true;
 
-                StartOnLoad.Value = XSplitScreen.Enabled;
+                _startOnLoadConfig.Value = XSplitScreen.Enabled;
 
                 List<ControllerAssignment> list = new List<ControllerAssignment>();
 
-                foreach(KeyValuePair<string, ControllerAssignment> entry in ControllerAssignments)
-                {
-                    list.Add(entry.Value);
-                }
-
-                ConfigDataWrapper wrapper = new ConfigDataWrapper(list);
+                ConfigDataWrapper wrapper = new ConfigDataWrapper(ControllerAssignments);
 
                 try
                 {
-                    ControllerAssignmentPreferencesJson.Value = JsonUtility.ToJson(wrapper);
+                    _controllerAssignmentsConfig.Value = JsonUtility.ToJson(wrapper);
                 }
-                catch(Exception e)
+                catch (Exception e)
                 {
                     Print("Placeholder Error - Unable to write profile to JSON");
+                    status = false;
                 }
 
-                config.Save();
+                _config.Save();
                 return status;
             }
-            
+            private void EnsureAssignmentExists(Controller controller)
+            {
+                if (controller.type == ControllerType.Mouse)
+                    return;
+
+                bool isKeyboard = false;
+
+                if (controller.type == ControllerType.Keyboard)
+                    if (controller.id != 0)
+                        return;
+                    else
+                        isKeyboard = true;
+
+                int defaultDisplay = -1;
+                int defaultScreen = -1;
+                string defaultProfile = "";
+
+                if (isKeyboard)
+                {
+                    defaultDisplay = 0;
+                    defaultScreen = 0;
+                    defaultProfile = LocalUserManager.GetFirstLocalUser().userProfile.fileName;
+                }
+
+                var selection = _controllerAssignments.Where(x => x.AssignedDeviceId == controller.id && x.IsKeyboard == isKeyboard);
+
+                if (selection.Count() == 0)
+                {
+                    _controllerAssignments.Add(new ControllerAssignment()
+                    {
+                        IsKeyboard = isKeyboard,
+                        AssignedDeviceId = controller.id,
+                        AssignedDisplay = defaultDisplay,
+                        AssignedScreen = defaultScreen,
+                        AssignedProfile = ""
+                    });
+
+                    Save();
+                }
+
+                OnSplitscreenDeviceConnected.Invoke(controller);
+            }
+            #endregion
+
+            #region Events
+            public void OnControllerConnected(Rewired.ControllerStatusChangedEventArgs args)
+            {
+                EnsureAssignmentExists(args.controller);
+            }
+            #endregion
+
+            #region Public Accessors
+            public void UpdateAssignments(List<ControllerAssignment> newAssignments)
+            {
+
+            }
+            public bool IsControllerAssigned(Controller controller)
+            {
+                foreach(ControllerAssignment assignment in ControllerAssignments)
+                {
+                    if (assignment.AssignedDeviceId == controller.id)
+                        if (assignment.IsKeyboard == (controller.type == ControllerType.Keyboard))
+                            if(assignment.AssignedDisplay > -1)
+                                return true;
+                }
+
+                return false;
+            }
+            #endregion
+
+            #region Definitions
+            [Serializable]
+            public class ControllerAssignedEvent : UnityEvent<Controller> { }
+
             [System.Serializable]
             public struct ControllerAssignment
             {
-                public string AssignedDeviceInstanceGuid;
                 public string AssignedProfile;
+                public int AssignedDeviceId;
                 public int AssignedDisplay;
                 public int AssignedScreen;
-            }
+                public bool IsKeyboard;
 
+                public int2 GetId()
+                {
+                    return new int2(AssignedDisplay, AssignedScreen);
+                }
+            }
 
             [System.Serializable]
             private class ConfigDataWrapper
             {
                 public ConfigDataWrapper(List<ControllerAssignment> data)
                 {
-                    AssignedDeviceInstanceGuid = new string[data.Count];
+                    IsKeyboard = new bool[data.Count];
                     AssignedProfile = new string[data.Count];
+                    AssignedDeviceId = new int[data.Count];
                     AssignedDisplay = new int[data.Count];
                     AssignedScreen = new int[data.Count];
 
                     for (int e = 0; e < data.Count; e++)
                     {
-                        AssignedDeviceInstanceGuid[e] = data[e].AssignedDeviceInstanceGuid;
+                        IsKeyboard[e] = data[e].IsKeyboard;
+                        AssignedDeviceId[e] = data[e].AssignedDeviceId;
                         AssignedProfile[e] = data[e].AssignedProfile;
                         AssignedDisplay[e] = data[e].AssignedDisplay;
                         AssignedScreen[e] = data[e].AssignedScreen;
                     }
                 }
 
-                public string[] AssignedDeviceInstanceGuid;
+                public bool[] IsKeyboard;
                 public string[] AssignedProfile;
+                public int[] AssignedDeviceId;
                 public int[] AssignedDisplay;
                 public int[] AssignedScreen;
             }
+            #endregion
         }
         #endregion
     }

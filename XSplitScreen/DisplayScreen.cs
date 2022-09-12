@@ -6,9 +6,9 @@ using UnityEngine.UI;
 
 namespace DoDad.UI.Components
 {
-    class DisplayScreen : Button
+    public class DisplayScreen : Button
     {
-        public ControllerDraggable AssignedController;
+        public ControllerIcon AssignedController;
 
         public override void OnPointerEnter(PointerEventData eventData)
         {
