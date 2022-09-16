@@ -1743,11 +1743,11 @@ namespace DoDad
                         {
                             _controllerAssignments.Add(new ControllerAssignment()
                             {
-                                AssignedDeviceId = wrapper.AssignedDeviceId[index],
-                                AssignedDisplay = wrapper.AssignedDisplay[index],
-                                AssignedProfile = wrapper.AssignedProfile[index],
-                                AssignedScreen = wrapper.AssignedScreen[index],
-                                IsKeyboard = wrapper.IsKeyboard[index]
+                                deviceId = wrapper.AssignedDeviceId[index],
+                                displayId = wrapper.AssignedDisplay[index],
+                                profile = wrapper.AssignedProfile[index],
+                                screenId = wrapper.AssignedScreen[index],
+                                isKeyboard = wrapper.IsKeyboard[index]
                             });
                         }
                     }
@@ -1815,28 +1815,32 @@ namespace DoDad
                     else
                         isKeyboard = true;
 
+                int2 defaultScreenAssignment = new int2(-1, -1);
+
                 int defaultDisplay = -1;
                 int defaultScreen = -1;
+
                 string defaultProfile = "";
 
                 if (isKeyboard)
                 {
                     defaultDisplay = 0;
-                    defaultScreen = 0;
+                    defaultScreen = 4;
                     defaultProfile = LocalUserManager.GetFirstLocalUser().userProfile.fileName;
                 }
 
-                var selection = _controllerAssignments.Where(x => x.AssignedDeviceId == controller.id && x.IsKeyboard == isKeyboard);
+                var selection = _controllerAssignments.Where(x => x.deviceId == controller.id && x.isKeyboard == isKeyboard);
 
                 if (selection.Count() == 0)
                 {
                     _controllerAssignments.Add(new ControllerAssignment()
                     {
-                        IsKeyboard = isKeyboard,
-                        AssignedDeviceId = controller.id,
-                        AssignedDisplay = defaultDisplay,
-                        AssignedScreen = defaultScreen,
-                        AssignedProfile = ""
+                        isKeyboard = isKeyboard,
+                        deviceId = controller.id,
+                        displayId = defaultDisplay,
+                        screenId = defaultScreen,
+                        profile = defaultProfile,
+                        screenAssignment = defaultScreenAssignment
                     });
 
                     Save();
@@ -1862,9 +1866,9 @@ namespace DoDad
             {
                 foreach(ControllerAssignment assignment in ControllerAssignments)
                 {
-                    if (assignment.AssignedDeviceId == controller.id)
-                        if (assignment.IsKeyboard == (controller.type == ControllerType.Keyboard))
-                            if(assignment.AssignedDisplay > -1)
+                    if (assignment.deviceId == controller.id)
+                        if (assignment.isKeyboard == (controller.type == ControllerType.Keyboard))
+                            if(assignment.displayId > -1)
                                 return true;
                 }
 
@@ -1879,15 +1883,21 @@ namespace DoDad
             [System.Serializable]
             public struct ControllerAssignment
             {
-                public string AssignedProfile;
-                public int AssignedDeviceId;
-                public int AssignedDisplay;
-                public int AssignedScreen;
-                public bool IsKeyboard;
+                public string profile;
+                public int deviceId;
+                public int displayId;
+                public int screenId;
+                public bool isKeyboard;
+                public int2 screenAssignment;
 
-                public int2 GetId()
+                public bool Matches(ControllerAssignment assignment)
                 {
-                    return new int2(AssignedDisplay, AssignedScreen);
+                    return (assignment.deviceId == deviceId && assignment.isKeyboard == isKeyboard);
+                }
+                public void Reset()
+                {
+                    deviceId = -1;
+                    isKeyboard = false;
                 }
             }
 
@@ -1904,11 +1914,11 @@ namespace DoDad
 
                     for (int e = 0; e < data.Count; e++)
                     {
-                        IsKeyboard[e] = data[e].IsKeyboard;
-                        AssignedDeviceId[e] = data[e].AssignedDeviceId;
-                        AssignedProfile[e] = data[e].AssignedProfile;
-                        AssignedDisplay[e] = data[e].AssignedDisplay;
-                        AssignedScreen[e] = data[e].AssignedScreen;
+                        IsKeyboard[e] = data[e].isKeyboard;
+                        AssignedDeviceId[e] = data[e].deviceId;
+                        AssignedProfile[e] = data[e].profile;
+                        AssignedDisplay[e] = data[e].displayId;
+                        AssignedScreen[e] = data[e].screenId;
                     }
                 }
 
@@ -1917,6 +1927,7 @@ namespace DoDad
                 public int[] AssignedDeviceId;
                 public int[] AssignedDisplay;
                 public int[] AssignedScreen;
+                public int2[] screenAssignments;
             }
             #endregion
         }

@@ -18,42 +18,45 @@ using System.Linq;
 /// </summary>
 namespace DoDad.UI.Components
 {
+    // TODO
+    // Rewrite SplitscreenConfigurationManager to store screens as int2
+    // Pass along to this class
+    // Finish sorting & grid behaviour
+    // ??
     public class DisplayManager : MonoBehaviour
     {
         #region Variables
         public static DisplayManager instance { get; private set; }
 
-        public static int hotspotCount { get; private set; }
+        public static int rowSize { get; private set; }
 
-        private static readonly float maximumHotspotDistance = 50f;
+        private static readonly float maxIconDropDistance = 5f;
         private static readonly int2 rowDimensions = new int2(150, 150);
 
-        public Dictionary<RectTransform, float[]> distances;
+        public List<DisplayConfiguration> displayConfigurations { get; private set; }
 
-        private Dictionary<ControllerIcon, IEnumerator[]> followerCoroutines;
-        private List<DisplayConfiguration> displayConfigurations;
+        public RectTransform[] screenSlots { get; private set; }
+
+        public int currentDisplay { get; private set; }
 
         private RectTransform display;
-        private RectTransform screenHotspotContainer;
+        private RectTransform screenSlotContainer;
 
         private Texture2D textureDisplay;
         private Texture2D textureScreenDivider;
 
-        private RectTransform[] screenHotSpots = new RectTransform[9];
 
-        private Vector2[] screenHotspotPositions = new Vector2[9] {
-        new Vector2(-100, 100), new Vector2(0, 100), new Vector2(100,100),
-        new Vector2(-100, 0), new Vector2(0, 0), new Vector2(100,0),
-        new Vector2(-100, -100), new Vector2(0, -100), new Vector2(100,-100) };
+        private Vector2[] screenSlotPositions;
 
-        public static readonly int mainHotSpotMask = 1 << (int)DisplayConfiguration.ScreenPosition.HigherUp |
+        public static readonly int mainSlotMask = 1 << (int)DisplayConfiguration.ScreenPosition.HigherUp |
             1 << (int)DisplayConfiguration.ScreenPosition.MiddleLeft |
             1 << (int)DisplayConfiguration.ScreenPosition.MiddleCenter |
             1 << (int)DisplayConfiguration.ScreenPosition.MiddleRight |
             1 << (int)DisplayConfiguration.ScreenPosition.LowerDown;
 
-        private int currentDisplay;
+        private Dictionary<ControllerIcon, FollowerDistanceMonitor> distanceMonitors;
 
+        private bool initialized = false;
         #endregion
 
         #region Unity Methods
@@ -67,9 +70,7 @@ namespace DoDad.UI.Components
             InitializeReferences();
             InitializeMenu();
             InitializeDisplayConfiguration();
-            InitializeHotspots();
-
-            ControllerIcon.AddDisplayListener(this);
+            InitializeSlots();
         }
         public void Update()
         {
@@ -80,17 +81,18 @@ namespace DoDad.UI.Components
         #region Initialization
         private void InitializeReferences()
         {
-            screenHotspotPositions = new Vector2[9] {
-            new Vector2(-rowDimensions.x, rowDimensions.y), new Vector2(0, rowDimensions.y), new Vector2(rowDimensions.x,rowDimensions.y),
+            screenSlotPositions = new Vector2[9] {
+            new Vector2(-rowDimensions.x, -rowDimensions.y), new Vector2(0, -rowDimensions.y), new Vector2(rowDimensions.x,-rowDimensions.y),
             new Vector2(-rowDimensions.x, 0), new Vector2(0, 0), new Vector2(rowDimensions.x,0),
-            new Vector2(-rowDimensions.x, -rowDimensions.y), new Vector2(0, -rowDimensions.y), new Vector2(rowDimensions.x,-rowDimensions.y) };
+            new Vector2(-rowDimensions.x, rowDimensions.y), new Vector2(0, rowDimensions.y), new Vector2(rowDimensions.x,rowDimensions.y) };
 
-            hotspotCount = screenHotspotPositions.Length;
+            rowSize = Library.Math.Utils.Minimum2dGridSize(screenSlotPositions.Length);
+
             displayConfigurations = new List<DisplayConfiguration>();
             textureDisplay = XSplitScreen.ResourceBundle.LoadAsset<Texture2D>("Assets/DoDad/Textures/display.png");
             textureScreenDivider = XSplitScreen.ResourceBundle.LoadAsset<Texture2D>("Assets/DoDad/Textures/divider.png");
-            followerCoroutines = new Dictionary<ControllerIcon, IEnumerator[]>();
-            distances = new Dictionary<RectTransform, float[]>();
+            distanceMonitors = new Dictionary<ControllerIcon, FollowerDistanceMonitor>();
+            screenSlots = new RectTransform[9];
         }
         private void InitializeMenu()
         {
@@ -111,98 +113,182 @@ namespace DoDad.UI.Components
             _backgroundImage.sprite = Sprite.Create(textureDisplay, new Rect(Vector2.zero, new Vector2(textureDisplay.width, textureDisplay.height)), Vector2.zero);
             _backgroundImage.SetNativeSize();
 
-            screenHotspotContainer = new GameObject("Screen Hotspot Container", typeof(RectTransform)).GetComponent<RectTransform>();
-            screenHotspotContainer.SetParent(display);
-            screenHotspotContainer.localScale = Vector3.one;
-            screenHotspotContainer.localPosition = Vector3.zero;
+            screenSlotContainer = new GameObject("Screen Slot Container", typeof(RectTransform)).GetComponent<RectTransform>();
+            screenSlotContainer.SetParent(display);
+            screenSlotContainer.localScale = Vector3.one;
+            screenSlotContainer.localPosition = Vector3.zero;
 
         }
         private void InitializeDisplayConfiguration()
         {
             if (displayConfigurations.Count != 0)
                 displayConfigurations.Clear();
-
+            // Fix index out of range
             for(int e = 0; e < Display.displays.Length; e++)
             {
-                displayConfigurations.Add(new DisplayConfiguration());
+                List<ControllerAssignment> selected = XSplitScreen.Configuration.ControllerAssignments.Where(x => x.deviceId == e).ToList();
+
+                displayConfigurations.Add(new DisplayConfiguration(selected));
             }
-
-            foreach (XSplitScreen.SplitScreenConfiguration.ControllerAssignment assignment in XSplitScreen.Configuration.ControllerAssignments)
-            {
-                if(assignment.AssignedDisplay > -1)
-                    AssignToDisplay(assignment.IsKeyboard, assignment.AssignedDeviceId, assignment.AssignedDisplay, assignment.AssignedScreen, -1);
-            }
-
-
         }
-        private void InitializeHotspots()
+        private void InitializeSlots()
         {
-            for(int e = 0; e < screenHotspotPositions.Length; e++)
+            // the current config uses a coordinate system for slots with x being vertical
+            // need to rewrite it so that x is horizontal
+            for(int e = 0; e < screenSlotPositions.Length; e++)
             {
-                screenHotSpots[e] = Utils.CreateImage($"Hotspot {e.ToString()}").GetComponent<RectTransform>();
-                screenHotSpots[e].SetParent(screenHotspotContainer);
-                screenHotSpots[e].localScale = Vector3.one;
-                screenHotSpots[e].localPosition = screenHotspotPositions[e];
+                screenSlots[e] = Library.UI.Utils.CreateImage($"Slot {e.ToString()}").GetComponent<RectTransform>();
+                screenSlots[e].SetParent(screenSlotContainer);
+                screenSlots[e].localScale = Vector3.one;
+                screenSlots[e].localPosition = screenSlotPositions[e];
             }
+        }
+        private void InitializeIconListeners()
+        {
+            if(ControllerIcon.activeIcons.Count > 0)
+            {
+                foreach(ControllerIcon icon in ControllerIcon.activeIcons)
+                {
+                    OnIconAdded(icon);
+                }
+            }
+
+            ControllerIcon.onIconAdded.AddListener(OnIconAdded);
+            ControllerIcon.onIconRemoved.AddListener(OnIconRemoved);
         }
         #endregion
 
         #region Public Methods
-        public void RequestDropAssignment(ControllerIcon icon, Follower follower)
+        public bool ChangeDisplay(int newDisplay)
+        {
+            // change display
+            return false;
+        }
+        public void RequestDropAssignment(ControllerIcon icon)
         {
             bool isKeyboard = icon.controller.type == ControllerType.Keyboard;
 
-            int closestIndex = -1;
-            int mainIndex = -1;
+            float range = maxIconDropDistance * maxIconDropDistance;
 
-            float minDistance = float.MaxValue;
-            float minMainDistance = float.MaxValue;
-            float range = maximumHotspotDistance * maximumHotspotDistance;
+            int closestIndex = distanceMonitors[icon].GetClosestSlotIndex(range);
+            int mainIndex = distanceMonitors[icon].GetClosestMainSlotIndex(range);
 
-            RectTransform rectTransform = follower.GetComponent<RectTransform>();
+            Debug.Log($"closestIndex: {closestIndex}");
+            Debug.Log($"mainSlot: '{mainIndex}'");
 
-            // Find minimum distance to a hotspot
-            for (int e = 0; e < distances[rectTransform].Length; e++)
-            {
-                if (distances[rectTransform][e] < minDistance)
-                {
-                    minDistance = distances[rectTransform][e];
-                    closestIndex = e;
+            ControllerAssignment newAssignment = new ControllerAssignment();
 
-                    if(Library.Bitshift.Helpers.IsLayerInMask(e, mainHotSpotMask))
-                    {
-                        if(distances[rectTransform][e] < minMainDistance)
-                        {
-                            minMainDistance = distances[rectTransform][e];
-                            mainIndex = e;
-                        }
-                    }
-                }
-            }
+            newAssignment.deviceId = icon.controller.id;
+            newAssignment.isKeyboard = isKeyboard;
+            newAssignment.displayId = currentDisplay;
+            newAssignment.profile = "";
+            newAssignment.screenId = closestIndex;
 
-            DisplayConfiguration.ScreenPosition requestedPosition = (DisplayConfiguration.ScreenPosition)closestIndex;
+            UnassignFromDisplay(newAssignment);
 
-            if (closestIndex == -1)
-                UnassignFromDisplay(isKeyboard, icon.controller.id);
-            else
-                AssignToDisplay(isKeyboard, icon.controller.id, currentDisplay, closestIndex, mainIndex);
+            if (closestIndex > -1)
+                AssignToDisplay(newAssignment, mainIndex);
         }
         #endregion
 
         #region Events
+        public void OnIconAdded(MonoBehaviour behaviour)
+        {
+            ControllerIcon icon;
+
+            try
+            {
+                icon = (ControllerIcon)behaviour;
+            }
+            catch (Exception e)
+            {
+                return;
+            }
+
+            if (icon == null)
+                return;
+            
+            distanceMonitors.Add(icon, new FollowerDistanceMonitor(screenSlots, icon.cursorFollower));
+
+            icon.onStartDrag.AddListener(OnStartDrag);
+            icon.onStopDrag.AddListener(OnStopDrag);
+        }
+        public void OnIconRemoved(MonoBehaviour behaviour)
+        {
+            ControllerIcon icon;
+
+            try
+            {
+                icon = (ControllerIcon)behaviour;
+            }
+            catch (Exception e)
+            {
+                return;
+            }
+
+            if (icon == null)
+                return;
+
+            distanceMonitors.Remove(icon);
+
+            icon.onStartDrag.RemoveListener(OnStartDrag);
+            icon.onStopDrag.RemoveListener(OnStopDrag);
+        }
+        public void OnStartDrag(MonoBehaviour behaviour)
+        {
+            ControllerIcon icon;
+
+            try
+            {
+                icon = (ControllerIcon)behaviour;
+            }
+            catch(Exception e)
+            {
+                return;
+            }
+
+            if (icon == null)
+                return;
+
+            Debug.Log("Dragging!");
+            distanceMonitors[icon].Start();
+            // monitor distance
+        }
+        public void OnStopDrag(MonoBehaviour behaviour)
+        {
+            ControllerIcon icon;
+
+            try
+            {
+                icon = (ControllerIcon)behaviour;
+            }
+            catch (Exception e)
+            {
+                return;
+            }
+
+            if (icon == null)
+                return;
+
+            Debug.Log("Not Dragging!");
+            distanceMonitors[icon].Stop();
+            RequestDropAssignment(icon);
+            // stop monitoring distance
+            // evaluate drop
+        }
         public int OnIconDrag(ControllerIcon icon)
         {
             // Check for end of drag and remove icon from the list + shut down coroutines
-            followerCoroutines.Add(icon, new IEnumerator[screenHotSpots.Length]);
+            //followerCoroutines.Add(icon, new IEnumerator[screenHotSpots.Length]);
 
-            if(!distances.ContainsKey(icon.follower))
-                distances.Add(icon.follower, new float[screenHotSpots.Length]);
+            //if(!distances.ContainsKey(icon.cursorFollower))
+            //    distances.Add(icon.cursorFollower, new float[screenHotSpots.Length]);
 
-            for(int e = 0; e < screenHotSpots.Length; e++)
-            {
-                followerCoroutines[icon][e] = CalculateDistance(icon.follower, e);
-                StartCoroutine(followerCoroutines[icon][e]);
-            }
+            //for(int e = 0; e < screenHotSpots.Length; e++)
+            //{
+             //   followerCoroutines[icon][e] = CalculateDistance(icon.cursorFollower, e);
+            //    StartCoroutine(followerCoroutines[icon][e]);
+            //}
 
             return 0;
         }
@@ -211,349 +297,368 @@ namespace DoDad.UI.Components
         #region Controller Icons
         private void UpdateIconListeners()
         {
-            List<ControllerIcon> removables = new List<ControllerIcon>();
+            if (ControllerIcon.onIconAdded == null)
+                return;
 
-            foreach(KeyValuePair<ControllerIcon, IEnumerator[]> keyPair in followerCoroutines)
-            {
-                if(!keyPair.Key.isDragging)
-                {
-                    removables.Add(keyPair.Key);
-                }
-            }
+            if (initialized)
+                return;
 
-            foreach(ControllerIcon removable in removables)
-            {
-                foreach(IEnumerator enumerator in followerCoroutines[removable])
-                {
-                    StopCoroutine(enumerator);
-                }
-                
-                followerCoroutines.Remove(removable);
-            }
+            InitializeIconListeners();
+
+            initialized = true;
+
+            return;
         }
         #endregion
 
         #region Assignment
-        private void AssignToDisplay(bool isKeyboard, int deviceId, int displayId, int screenId, int screenSectionId)
+        private void AssignToDisplay(ControllerAssignment newAssignment, int mainSlot)
         {
-            if (displayId <= Display.displays.Length - 1 && displayId > -1)
+            if (newAssignment.displayId < Display.displays.Length && newAssignment.displayId > -1)
             {
-                UnassignFromDisplay(isKeyboard, deviceId);
-                displayConfigurations[displayId].AssignDevice(isKeyboard, deviceId, screenId, screenSectionId);
+                displayConfigurations[newAssignment.displayId].AssignDevice(newAssignment, mainSlot);
             }
         }
-        private void UnassignFromDisplay(bool isKeyboard, int deviceId)
+        private void UnassignFromDisplay(ControllerAssignment oldAssignment)
         {
             for(int e = 0; e < displayConfigurations.Count; e++)
             {
-                displayConfigurations[e].Unassign(isKeyboard, deviceId);
-            }
-        }
-        #endregion
-
-        #region Coroutines
-        private IEnumerator CalculateDistance(RectTransform follower, int hotspotId)
-        {
-            Vector3 position = screenHotSpots[hotspotId].position;
-
-            Vector3 distance;
-
-            int maxFrames = 5;
-            int currentFrame = 5;
-
-            while (true)
-            {
-                if(currentFrame < maxFrames)
-                {
-                    currentFrame++;
-                    yield return null;
-                }
-
-                distance = position - follower.localPosition;
-
-                distances[follower][hotspotId] = distance.sqrMagnitude;
-
-                currentFrame = 0;
-
-                yield return null;
+                displayConfigurations[e].Unassign(oldAssignment);
             }
         }
         #endregion
 
         #region Definitions
+        private class FollowerDistanceMonitor
+        {
+            public IEnumerator[] coroutines;
+            public float[] distances;
+            public bool[] mainSlot;
+            public bool[] center;
+
+            public FollowerDistanceMonitor(RectTransform[] slots, Follower follower)
+            {
+                distances = new float[slots.Length];
+                coroutines = new IEnumerator[slots.Length];
+                center = new bool[slots.Length];
+                this.mainSlot = new bool[slots.Length];
+
+                for (int e = 0; e < slots.Length; e++)
+                {
+                    coroutines[e] = CalculateDistance(e, follower, this);
+                }
+
+                foreach (int index in DisplayConfiguration.mainSlotIndices)
+                    mainSlot[index] = true;
+
+                center[DisplayConfiguration.centerSlotIndex] = true;
+            }
+
+            public void Start()
+            {
+                foreach(IEnumerator enumerator in coroutines)
+                {
+                    DisplayManager.instance.StartCoroutine(enumerator);
+                }
+            }
+            public void Stop()
+            {
+                foreach (IEnumerator enumerator in coroutines)
+                {
+                    DisplayManager.instance.StopCoroutine(enumerator);
+                }
+            }
+            public int GetClosestSlotIndex(float maximumRange)
+            {
+                int index = -1;
+
+                float currentDistance = float.MaxValue;
+
+                for (int e = 0; e < distances.Length; e++)
+                {
+                    float distance = distances[e] / 100f;
+
+                    if (distance > maximumRange)
+                        continue;
+
+                    if (distance < currentDistance)
+                    {
+                        currentDistance = distance;
+                        index = e;
+                    }
+                }
+
+                return index;
+            }
+            public int GetClosestMainSlotIndex(float maximumRange)
+            {
+                int index = -1;
+
+                float currentDistance = float.MaxValue;
+
+                for (int e = 0; e < distances.Length; e++)
+                {
+                    if (!mainSlot[e])
+                        continue;
+
+                    float distance = distances[e] / 100f;
+
+                    if (distance > maximumRange)
+                        continue;
+
+                    if (distance < currentDistance)
+                    {
+                        currentDistance = distance;
+                        index = e;
+                    }
+                }
+
+                return index;
+            }
+            
+            #region Coroutines
+            private IEnumerator CalculateDistance(int slotIndex, Follower follower, FollowerDistanceMonitor monitor)
+            {
+                RectTransform slot = DisplayManager.instance.screenSlots[slotIndex];
+                RectTransform followerRect = follower.GetComponent<RectTransform>();
+
+                Vector3 distance;
+
+                float measureTime = 0.1f;
+                float elapsedTime = 0f;
+
+                while (true && follower != null && monitor != null)
+                {
+                    if(elapsedTime < measureTime)
+                    {
+                        elapsedTime += Time.unscaledDeltaTime;
+                        yield return null;
+                    }
+
+                    distance = slot.position - followerRect.localPosition;
+
+                    monitor.distances[slotIndex] = distance.sqrMagnitude;
+
+                    elapsedTime = 0;
+
+                    yield return null;
+                }
+            }
+            #endregion
+        }
         public class DisplayConfiguration
         {
             #region Variables
+            public static readonly int2[] mainSlotPositions = new int2[4]
+            {
+                new int2(0,1),
+                new int2(1,0),
+                new int2(1,2),
+                new int2(2,1)
+            };
+            public static readonly int2 centerSlotPosition = new int2(1,1);
+
+            public static readonly int[] mainSlotIndices = new int[4] { 1, 3, 5, 7 };
+            public static readonly int centerSlotIndex = 4;
             public UnityEvent onDisplayUpdated { get; private set; }
 
-            private ScreenConfig[] screens = new ScreenConfig[9];
+            private SlotConfiguration[][] screenLayout;
+            //private ScreenConfig[] screens = new ScreenConfig[9];
 
-            private int[] availableScreens = new int[9] { -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-            private string[] assignedProfiles = new string[9] { "", "", "", "", "", "", "", "", "", };
+            //private int[] availableScreens = new int[9] { -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+            //private string[] assignedProfiles = new string[9] { "", "", "", "", "", "", "", "", "", };
 
-            private bool[] isKeyboard = new bool[9] { false, false, false, false, false, false, false, false, false };
+            //private bool[] isKeyboard = new bool[9] { false, false, false, false, false, false, false, false, false };
             #endregion
 
             #region Public Methods
-            public DisplayConfiguration()
+            public DisplayConfiguration(List<ControllerAssignment> assignments)
             {
                 onDisplayUpdated = new UnityEvent();
-                
-                for(int e = 0; e < screens.Length; e++)
-                {
-                    screens[e] = new ScreenConfig(e);
-                }
-            }
-            public void AssignDevice(bool isKeyboard, int deviceId, int screenId, int screenSectionId)
-            {
-                // Duplicate ALL movements to isKeyboard!!!!!!! or make an intbool class to store info
-                if (screens[screenId].Matches(deviceId, isKeyboard))
-                    return;
 
-                // Hotspots should not be assigned to out of order. Main hotspots must be assigned first.
+                screenLayout = new SlotConfiguration[rowSize][];
 
-                ScreenPosition requestedPosition = ScreenPosition.None;
-
-                try
+                for (int row = 0; row < rowSize; row++)
                 {
-                    requestedPosition = (ScreenPosition)screenId;
-                }
-                catch(Exception e)
-                {
-                    Debug.Log("Placeholder Error - unable to parse screenId");
+                    screenLayout[row] = new SlotConfiguration[rowSize];
                 }
 
-                if (requestedPosition == ScreenPosition.None)
-                    return;
+                int2 slotPosition = new int2(-1, -1);
 
-                if(IsEmptyScreen())
-                    requestedPosition = ScreenPosition.MiddleCenter;
-                else
+                for(int x = 0; x < rowSize; x++)
                 {
-                    ScreenPosition screenSectionPosition = (ScreenPosition)screenSectionId;
-
-                    int assignedDevice = GetAssignment((int)ScreenPosition.MiddleCenter);
-
-                    if (assignedDevice > -1)
+                    for(int y = 0; y < rowSize; y++)
                     {
-                        requestedPosition = screenSectionPosition;
+                        slotPosition.x = x;
+                        slotPosition.y = y;
 
-                        if (assignedDevice == deviceId)
+                        bool isMain = false;
+                        bool isCenter = false;
+
+                        foreach(int2 mainSlotPosition in mainSlotPositions)
                         {
-                            if (isKeyboard == this.isKeyboard[(int)ScreenPosition.MiddleCenter])
+                            if (mainSlotPosition.Equals(slotPosition))
                             {
-                                Debug.Log("Matching devices");
-                                return;
+                                isMain = true;
                             }
                         }
+
+                        if (centerSlotPosition.Equals(slotPosition))
+                            isCenter = true;
+
+                        screenLayout[slotPosition.x][slotPosition.y] = new SlotConfiguration(slotPosition, IsMainSlot(slotPosition), IsCenterSlot(slotPosition));
+                        screenLayout[slotPosition.x][slotPosition.y].Validate();
                     }
                 }
-
-
-                if (HasAssignment((int)requestedPosition))
+                /*
+                for(int screenIndex = 0; screenIndex < screenLayout.Length * screenLayout.Length; screenIndex++)
                 {
-                    Debug.Log($"Assigned: {screens[(int)requestedPosition].deviceId}");
-                    SetValue(requestedPosition, deviceId);
-                    DisplayUpdated();
-                    DebugGrid();
-                    return;
-                }
+                    position.x++;
 
-                int upperIndex = (int)requestedPosition - 3;
-                int lowerIndex = (int)requestedPosition + 3;
-                int leftIndex = (int)requestedPosition - 1;
-                int rightIndex = (int)requestedPosition + 1;
-
-                upperIndex = upperIndex >= screens.Length ? -1 : upperIndex;
-                lowerIndex = lowerIndex >= screens.Length ? -1 : lowerIndex;
-                leftIndex = leftIndex >= screens.Length ? -1 : leftIndex;
-                rightIndex = rightIndex >= screens.Length ? -1 : rightIndex;
-
-                ScreenPosition upperPosition = (ScreenPosition)Mathf.Clamp(upperIndex, -1, 8);
-                ScreenPosition lowerPosition = (ScreenPosition)Mathf.Clamp(lowerIndex, -1, 8);
-                ScreenPosition leftPosition = (ScreenPosition)Mathf.Clamp(leftIndex, -1, 8);
-                ScreenPosition rightPosition = (ScreenPosition)Mathf.Clamp(rightIndex, -1, 8);
-
-                int upperShiftPositionInt = (int)upperPosition - 3;
-                int lowerShiftPositionInt = (int)lowerPosition + 3;
-                int leftShiftPositionInt = (int)leftPosition - 1;
-                int rightShiftPositionInt = (int)rightPosition + 1;
-
-                upperShiftPositionInt = upperShiftPositionInt >= screens.Length ? -1 : upperShiftPositionInt;
-                lowerShiftPositionInt = lowerShiftPositionInt >= screens.Length ? -1 : lowerShiftPositionInt;
-                rightShiftPositionInt = rightShiftPositionInt >= screens.Length ? -1 : rightShiftPositionInt;
-                leftShiftPositionInt = leftShiftPositionInt >= screens.Length ? -1 : leftShiftPositionInt;
-
-                ScreenPosition upperShiftPosition = (ScreenPosition)Mathf.Clamp(upperShiftPositionInt, -1, 8);
-                ScreenPosition lowerShiftPosition = (ScreenPosition)Mathf.Clamp(lowerShiftPositionInt, -1, 8);
-                ScreenPosition leftShiftPosition = (ScreenPosition)Mathf.Clamp(leftShiftPositionInt, -1, 8);
-                ScreenPosition rightShiftPosition = (ScreenPosition)Mathf.Clamp(rightShiftPositionInt, -1, 8);
-
-                // MainHotspots need to shift all main hotspots to the opposite side
-
-                // Convert to multidimensional array
-                // # # #
-                // # # #
-                // # # #
-                // screenAssignments[x][y].deviceId
-
-                if(IsLayerInMask((int)requestedPosition, DisplayManager.mainHotSpotMask))
-                {
-                    Debug.Log($"{requestedPosition} is main hotspot");
-                    bool isInserting = deviceId > -1;
-
-                    if (requestedPosition == ScreenPosition.MiddleCenter)
+                    if(position.x == rowSize)
                     {
-                        ClearScreens();
+                        position.x = 0;
+                        position.y--;
 
-                        if(isInserting)
-                            SetValue(ScreenPosition.MiddleCenter, deviceId);
+                        if (position.y == -1)
+                            break; ;
+                    }
 
-                        DisplayUpdated();
+                    screenLayout[position.x][position.y] = new SlotConfiguration(position, screenIndex, 
+                        IsMainSlot(screenIndex), IsCenter(screenIndex));
+                    screenLayout[position.x][position.y].Validate();
+                }*/
 
-                        Debug.Log("Inserted to middle");
+                Initialize(assignments);
+
+                DebugGrid();
+                // TODO Initialize based on the current saved assignments
+                // No shifting, just set them to the last saved configuration
+
+                // Then fixed device assignment from the top down
+                // Only dropping an icon should assign or unassign devices
+
+                // ASSIGNMENT
+                //
+                // If current assignment is identical to requested assignment do nothing
+                //
+                // If grid empty change assignment to center
+                // 
+                // Else
+                // 
+                // If the grid has center then change assignment to main hotspot
+                //
+                // MOVEMENT
+                //
+                // If the requested assignment is empty
+                //
+                // - If the requested assignment is a main hotspot
+                // -- If the requested assignment has neighbors
+                // --- Shift neighbors away
+                // -- Else
+                // --- Shift ALL assignments a single direction
+                //
+                // If deviceId < 0 shift opposite direction of above
+                // - If unassigning a main hotspot, it will never have neighbors
+                // 
+                // - Else
+                //
+                // - Shift all neighbors away
+                // -- If deviceId < 0 shift opposite of above
+                // 
+                // Update the requested assignment values
+                // 
+                // Send "OnDeviceAssigned" and "OnDeviceUnassigned" events
+                // ControllerIcon should update display status
+            }
+            public void AssignDevice(ControllerAssignment newAssignment, int mainSlot)
+            {
+                int2 screenPosition = Get2dIndex(newAssignment.screenId, rowSize, false);
+                int2 centerPosition = Get2dIndex(centerSlotIndex, rowSize, false);
+
+                if (screenPosition.IsPositive())
+                {
+                    ControllerAssignment existingAssignment = screenLayout[screenPosition.x][screenPosition.y].assignment;
+
+                    if (existingAssignment.Matches(newAssignment))
+                        return;
+
+                    if (existingAssignment.deviceId > -1) // If assignment exists just replace it
+                    {
+                        SetValue(screenPosition, newAssignment);
+
                         DebugGrid();
+                        // onDisplayUpdated
                         return;
                     }
 
-                    int shiftDirectionIndex = -1;
-
-                    ScreenPosition shiftDirection = ScreenPosition.None;
-
-                    if (requestedPosition == ScreenPosition.MiddleRight)
-                        shiftDirection = ScreenPosition.MiddleLeft;
-                    if (requestedPosition == ScreenPosition.MiddleLeft)
-                        shiftDirection = ScreenPosition.MiddleRight;
-                    if (requestedPosition == ScreenPosition.HigherUp)
-                        shiftDirection = ScreenPosition.LowerDown;
-                    if (requestedPosition == ScreenPosition.LowerDown)
-                        shiftDirection = ScreenPosition.HigherUp;
-
-                    if (shiftDirection == ScreenPosition.MiddleLeft)
-                        shiftDirectionIndex = -1;
-                    else if (shiftDirection == ScreenPosition.HigherUp)
-                        shiftDirectionIndex = -3;
-                    else if (shiftDirection == ScreenPosition.MiddleRight)
-                        shiftDirectionIndex = 1;
-                    else if (shiftDirection == ScreenPosition.LowerDown)
-                        shiftDirectionIndex = 3;
-
-                    // Remember to send unassign event to ControllerIcon
-                    for (int e = 0; e < availableScreens.Length; e++)
+                    if(IsEmpty())
                     {
-                        Debug.Log($"Checking screen {(ScreenPosition)e}");
-
-                        if ((ScreenPosition)e == requestedPosition)
-                            continue;
-
-                        if (IsLayerInMask(e, DisplayManager.mainHotSpotMask))
-                        {
-                            int shiftIndex = e + shiftDirectionIndex;
-                            Debug.Log($"Shifting hotspot '{(ScreenPosition)e}' to '{(ScreenPosition)shiftIndex}'");
-
-                            if (shiftIndex > -1 && shiftIndex < availableScreens.Length)
-                            {
-                                if(isInserting)
-                                {
-                                    ShiftValue((ScreenPosition)e, (ScreenPosition)shiftIndex);
-                                    SetValue((ScreenPosition)e, -1);
-                                }
-                                else
-                                {
-                                    ShiftValue((ScreenPosition)shiftIndex, (ScreenPosition)e);
-                                    SetValue((ScreenPosition)shiftIndex, -1);
-                                }
-                            }
-                        }
-                    }
-
-                    SetValue(requestedPosition, deviceId);
-                    Debug.Log("Shifted main hotspots");
-                    DebugGrid();
-                }
-                else
-                {
-                    if (deviceId > -1)
-                    {
-                        Debug.Log("With device");
-
-                        ShiftValue(upperPosition, upperShiftPosition);
-                        SetValue(upperPosition, -1);
-
-                        ShiftValue(lowerPosition, lowerShiftPosition);
-                        SetValue(lowerPosition, -1);
-
-                        ShiftValue(leftPosition, leftShiftPosition);
-                        SetValue(leftPosition, -1);
-
-                        ShiftValue(rightPosition, rightShiftPosition);
-                        SetValue(rightPosition, -1);
+                        SetCenter(newAssignment);
+                        DebugGrid();
+                        return;
                     }
                     else
                     {
-                        ShiftValue(upperShiftPosition, upperPosition);
-                        SetValue(upperShiftPosition, -1);
-
-                        ShiftValue(lowerShiftPosition, lowerPosition);
-                        SetValue(lowerShiftPosition, -1);
-
-                        ShiftValue(leftShiftPosition, leftPosition);
-                        SetValue(leftShiftPosition, -1);
-
-                        ShiftValue(rightShiftPosition, rightPosition);
-                        SetValue(rightShiftPosition, -1);
+                        if (IsAssigned(centerPosition))
+                        {
+                            Debug.Log($"Center position is assigned: {centerPosition}");
+                            newAssignment.screenId = mainSlot;
+                        }
                     }
 
-                    SetValue(requestedPosition, deviceId);
+                    int2 newPosition = Get2dIndex(newAssignment.screenId, rowSize, false);
+                    Debug.Log($"updated Position: '{newPosition}'");
 
-                    Debug.Log("Shifted non-main hotspot");
+                    if (IsMainSlot(newPosition))
+                    {
+                        if(HasAssignedNeighbor(newPosition))
+                        {
+                            Debug.Log("ShiftRadial");
+                            ShiftRadial(newPosition, newAssignment.deviceId > -1);
+                        }
+                        else
+                        {
+                            Debug.Log("ShiftLinear");
+                            DirectionalPointer direction = DirectionalPointer.Self;
+
+                            if (NeighborExists(newPosition, DirectionalPointer.Up))
+                                direction = newAssignment.deviceId > -1 ? DirectionalPointer.Down : DirectionalPointer.Up;
+                            if (NeighborExists(newPosition, DirectionalPointer.Right))
+                                direction = newAssignment.deviceId > -1 ? DirectionalPointer.Left : DirectionalPointer.Right;
+                            if (NeighborExists(newPosition, DirectionalPointer.Down))
+                                direction = newAssignment.deviceId > -1 ? DirectionalPointer.Up : DirectionalPointer.Down;
+                            if (NeighborExists(newPosition, DirectionalPointer.Left))
+                                direction = newAssignment.deviceId > -1 ? DirectionalPointer.Right : DirectionalPointer.Left;
+
+                            Reset(newPosition);
+                            ShiftLinear(direction);
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log("Normal ShiftRadial");
+                        ShiftRadial(newPosition, newAssignment.deviceId > -1);
+                    }
+                    Debug.Log($"Final SetValue: {newPosition}");
+                    SetValue(newPosition, newAssignment);
                     DebugGrid();
                 }
+
             }
-            public void Unassign(bool isKeyboard, int deviceId)
+            public void Unassign(ControllerAssignment oldAssignment)
             {
-                for(int e = 0; e < availableScreens.Length; e++)
+                for(int x = 0; x < screenLayout.Length; x++)
                 {
-                    if(availableScreens[e] == deviceId)
+                    for(int y = 0; y < screenLayout.Length; y++)
                     {
-                        if(this.isKeyboard[e] == isKeyboard)
+                        if(screenLayout[x][y].assignment.Matches(oldAssignment))
                         {
-                            AssignDevice(false, -1, e, -1);
-                            break;
+                            screenLayout[x][y].assignment.Reset();
+                            // Notify unassigned
                         }
                     }
                 }
-            }
-            public List<ControllerAssignment> GetAssignments()
-            {
-                List<ControllerAssignment> assignmentList = new List<ControllerAssignment>();
-
-                for (int e = 0; e < availableScreens.Length; e++)
-                {
-                    if(availableScreens[e] > -1)
-                    {
-                        assignmentList.Add(new ControllerAssignment()
-                        {
-                            AssignedDeviceId = availableScreens[e],
-                             AssignedProfile = assignedProfiles[e],
-                              AssignedDisplay = -1,
-                               AssignedScreen = e,
-                                IsKeyboard = isKeyboard[e]
-                        });
-                    }
-                }
-
-                return assignmentList;
-            }
-            public bool IsEmptyScreen()
-            {
-                for (int e = 0; e < availableScreens.Length; e++)
-                    if (availableScreens[e] > -1)
-                    {
-                        return false;
-                    }
-
-                return true;
             }
             public void Save()
             {
@@ -562,64 +667,197 @@ namespace DoDad.UI.Components
             #endregion
 
             #region Assignments
-            private void DebugGrid()
+            private void Initialize(List<ControllerAssignment> assignments)
             {
-                Debug.Log($"[{availableScreens[0]}] [{availableScreens[1]}] [{availableScreens[2]}] ");
-                Debug.Log($"[{availableScreens[3]}] [{availableScreens[4]}] [{availableScreens[5]}] ");
-                Debug.Log($"[{availableScreens[6]}] [{availableScreens[7]}] [{availableScreens[8]}] ");
-            }
-            private bool IsLayerInMask(int layer, int layerMask)
-            {
-                return Library.Bitshift.Helpers.IsLayerInMask(layer, layerMask);
-            }
-            private void ShiftHotspot(int hotspotId, bool main = false)
-            {
-
-            }
-            private void ShiftValue(ScreenPosition valueIndex, ScreenPosition targetIndex)
-            {
-                if (valueIndex == ScreenPosition.None || targetIndex == ScreenPosition.None)
-                    return;
-
-                availableScreens[(int)targetIndex] = availableScreens[(int)valueIndex];
-            }
-            private void ClearScreens()
-            {
-                for (int e = 0; e < availableScreens.Length; e++)
+                foreach(ControllerAssignment assignment in assignments)
                 {
-                    availableScreens[e] = -1;
+                    int2 position = DoDad.Library.Math.Utils.FlatIndexTo2D(assignment.screenId, rowSize, false);
+
+                    if (!position.IsPositive())
+                        continue;
+
+                    screenLayout[position.x][position.y].assignment = assignment;
                 }
             }
-            private void SetValue(ScreenPosition valueIndex, int value)
+            private void SetCenter(ControllerAssignment newAssignment)
             {
-                if (valueIndex == ScreenPosition.None)
-                    return;
+                int2 centerPosition = Get2dIndex(centerSlotIndex, rowSize, false);
 
-                availableScreens[(int)valueIndex] = value;
+                screenLayout[centerPosition.x][centerPosition.y].Load(newAssignment);
             }
-            private int GetAssignment(int screenId)
+            private bool NeighborExists(int2 origin, DirectionalPointer direction)
             {
-                if (screenId < 0 || screenId > availableScreens.Length)
-                    return -1;
+                SlotConfiguration slot = screenLayout[origin.x][origin.y];
 
-                return availableScreens[screenId];
-            }
-            private bool HasValue(bool isKeyboard, int value)
-            {
-                for(int e = 0; e < availableScreens.Length; e++)
+                switch (direction)
                 {
-                    if (availableScreens[e] == value && isKeyboard == this.isKeyboard[e])
+                    case DirectionalPointer.Up:
+                        return slot.neighborUp.IsPositive();
+                    case DirectionalPointer.Right:
+                        return slot.neighborRight.IsPositive();
+                    case DirectionalPointer.Down:
+                        return slot.neighborDown.IsPositive();
+                    case DirectionalPointer.Left:
+                        return slot.neighborLeft.IsPositive();
+                    default:
+                        return false;
+                }
+            }
+            private bool HasAssignedNeighbor(int2 origin)
+            {
+                if (!origin.IsPositive())
+                    return false;
+
+                if (IsAssigned(screenLayout[origin.x][origin.y].neighborUp))
+                    return true;
+                if (IsAssigned(screenLayout[origin.x][origin.y].neighborRight))
+                    return true;
+                if (IsAssigned(screenLayout[origin.x][origin.y].neighborDown))
+                    return true;
+                if (IsAssigned(screenLayout[origin.x][origin.y].neighborLeft))
+                    return true;
+
+                return false;
+            }
+            private bool IsEmpty()
+            {
+                for(int x = 0; x < screenLayout.Length; x++)
+                {
+                    for(int y = 0; y < screenLayout.Length; y++)
+                    {
+                        if (screenLayout[x][y].isAssigned)
+                            return false;
+                    }
+                }
+
+                return true;
+            }
+            private bool IsMainSlot(int2 position)
+            {
+                for (int e = 0; e < mainSlotPositions.Length; e++)
+                {
+                    if (mainSlotPositions[e].Equals(position))
                         return true;
                 }
 
                 return false;
             }
-            private bool HasAssignment(int screenId)
+            private bool IsCenterSlot(int2 position)
             {
-                if (screenId < 0 || screenId >= availableScreens.Length)
-                    return false;
+                return centerSlotPosition.Equals(position);
+            }
+            private bool IsCenter(int flatIndex)
+            {
+                return flatIndex == centerSlotIndex;
+            }
+            private void DebugGrid()
+            {
+                string rowTemplate = "[{0} = {1} {2}] | [{3} = {4} {5}] | [{6} = {7} {8}]";
+                string rowDivider = "----------------------------------";
 
-                return availableScreens[screenId] > -1;
+                int y = 0;
+                for(int x = screenLayout.Length - 1; x > -1; x--)
+                {
+                    string output = rowTemplate;
+
+                    output = string.Format(output, $"{x}, {y}", screenLayout[x][y].assignment.deviceId, screenLayout[x][y].assignment.isKeyboard,
+                        $"{x}, {y+1}", screenLayout[x][y+1].assignment.deviceId, screenLayout[x][y + 1].assignment.isKeyboard,
+                        $"{x}, {y+2}", screenLayout[x][y+2].assignment.deviceId, screenLayout[x][y + 2].assignment.isKeyboard);
+                    Debug.Log(output);
+                    Debug.Log(rowDivider);
+                }
+            }
+            private void SetValue(int2 position, ControllerAssignment newAssignment)
+            {
+                screenLayout[position.x][position.y].Load(newAssignment);
+            }
+            private void ShiftRadial(int2 origin, bool expand) // TODO do this better
+            {
+                SlotConfiguration slot = screenLayout[origin.x][origin.y];
+
+                if(expand)
+                {
+                    Debug.Log("Expanding");
+                    ShiftNeighbor(slot.neighborUp, slot.neighborUpShift);
+                    ShiftNeighbor(slot.neighborRight, slot.neighborRightShift);
+                    ShiftNeighbor(slot.neighborDown, slot.neighborDownShift);
+                    ShiftNeighbor(slot.neighborLeft, slot.neighborLeftShift);
+                }
+                else
+                {
+                    Debug.Log("Contracting");
+                    ShiftNeighbor(slot.neighborUpShift, slot.neighborUp);
+                    ShiftNeighbor(slot.neighborRightShift, slot.neighborRight);
+                    ShiftNeighbor(slot.neighborDownShift, slot.neighborDown);
+                    ShiftNeighbor(slot.neighborLeftShift, slot.neighborLeft);
+                }
+            }
+            private void ShiftLinear(DirectionalPointer direction)
+            {
+                if (direction == DirectionalPointer.Self)
+                    return;
+
+                int2 shiftDirection = new int2(0, 0);
+
+                if (direction == DirectionalPointer.Up)
+                    shiftDirection.y = 1;
+
+                if (direction == DirectionalPointer.Right)
+                    shiftDirection.x = 1;
+
+                if (direction == DirectionalPointer.Down)
+                    shiftDirection.y = -1;
+
+                if (direction == DirectionalPointer.Left)
+                    shiftDirection.x = -1;
+
+                for(int x = 0; x < screenLayout.Length; x++)
+                {
+                    for(int y = 0; y < screenLayout.Length; y++)
+                    {
+                        if(screenLayout[x][y].isMainSlot || screenLayout[x][y].isCenter)
+                        {
+                            int2 mainSlot = new int2(x, y);
+                            
+                            ShiftNeighbor(mainSlot, mainSlot.Add(shiftDirection));
+                        }
+                    }
+                }
+            }
+            private void ShiftNeighbor(int2 origin, int2 destination)
+            {
+                if (origin.IsPositive())
+                {
+                    if (IsAssigned(origin))
+                    {
+                        if (destination.IsPositive())
+                        {
+                            Debug.Log($"Shifting {origin} to {destination}");
+                            Shift(origin, destination);
+                        }
+                        else
+                        {
+                            Debug.Log($"Resetting {origin}");
+                            Reset(origin);
+                        }
+                    }
+                }
+            }
+            private bool IsAssigned(int2 position)
+            {
+                if(position.IsPositive())
+                    return screenLayout[position.x][position.y].isAssigned;
+
+                return false;
+            }
+            private void Reset(int2 position)
+            {
+                screenLayout[position.x][position.y].Reset();
+            }
+            private void Shift(int2 origin, int2 destination)
+            {
+                screenLayout[destination.x][destination.y].Load(screenLayout[origin.x][origin.y].assignment);
+                Reset(origin);
             }
             #endregion
 
@@ -630,95 +868,102 @@ namespace DoDad.UI.Components
             }
             #endregion
 
-            #region Definitions
-            public struct ScreenConfig
+            #region Helpers
+            private int2 Get2dIndex(int flatIndex, int rowSize, bool useWidth)
             {
-                public int deviceId;
-                public string profile;
-                public bool isKeyboard;
+                Debug.Log($"Get2dIndex(flatIndex {flatIndex}, rowSize {rowSize}, useWidth {useWidth})");
 
-                public ScreenPosition upperPosition { get; private set; }
-                public ScreenPosition lowerPosition { get; private set; }
-                public ScreenPosition leftPosition { get; private set; }
-                public ScreenPosition rightPosition { get; private set; }
+                return Library.Math.Utils.FlatIndexTo2D(flatIndex, rowSize, useWidth);
 
-                public ScreenPosition upperShiftPosition { get; private set; }
-                public ScreenPosition lowerShiftPosition { get; private set; }
-                public ScreenPosition leftShiftPosition { get; private set; }
-                public ScreenPosition rightShiftPosition { get; private set; }
+                int2 newIndex;
 
-                public int2 neighborUp { get; private set; };
-                public int2 neighborRight { get; private set; };
-                public int2 neighborDown { get; private set; };
-                public int2 neighborLeft { get; private set; };
-                public int2 neighborUpShift { get; private set; };
-                public int2 neighborRightShift { get; private set; };
-                public int2 neighborDownShift { get; private set; };
-                public int2 neighborLeftShift { get; private set; };
+                if (useWidth)
+                    newIndex = new int2(flatIndex % rowSize, flatIndex / rowSize);
+                else
+                    newIndex = new int2(flatIndex / rowSize, flatIndex % rowSize);
 
+                return newIndex;
 
-                public ScreenConfig(int index, int deviceId = -1, string profile = "", bool isKeyboard = false)
+            }
+            #endregion
+
+            #region Definitions
+            public struct SlotConfiguration
+            {
+                public ControllerAssignment assignment;
+
+                public bool isAssigned
                 {
-                    int2 index2 = new int2(0, 0);
+                    get
+                    {
+                        return assignment.deviceId > -1;
+                    }
+                }
+                public bool isMainSlot { get; private set; }
+                public bool isCenter { get; private set; }
+                public int2 neighborUp { get; private set; }
+                public int2 neighborRight { get; private set; }
+                public int2 neighborDown { get; private set; }
+                public int2 neighborLeft { get; private set; }
+                public int2 neighborUpShift { get; private set; }
+                public int2 neighborRightShift { get; private set; }
+                public int2 neighborDownShift { get; private set; }
+                public int2 neighborLeftShift { get; private set; }
 
-                    this.deviceId = deviceId;
-                    this.profile = profile;
-                    this.isKeyboard = isKeyboard;
-
-                    neighborUp = new int2(index2.x, index2.y + 1);
-                    neighborRight = new int2(index2.x + 1, index2.y);
-                    neighborDown = new int2(index2.x, index2.y - 1);
-                    neighborLeft = new int2(index2.x - 1, index2.y);
+                // Should probably fully convert to in2 coords
+                public SlotConfiguration(int2 position, bool isMainSlot, bool isCenter)
+                {
+                    neighborUp = new int2(position.x, position.y + 1);
+                    neighborRight = new int2(position.x + 1, position.y);
+                    neighborDown = new int2(position.x, position.y - 1);
+                    neighborLeft = new int2(position.x - 1, position.y);
 
                     neighborUpShift = new int2(neighborUp.x, neighborUp.y + 1);
                     neighborRightShift = new int2(neighborRight.x + 1, neighborRight.y);
                     neighborDownShift = new int2(neighborDown.x, neighborDown.y - 1);
                     neighborLeftShift = new int2(neighborLeft.x - 1, neighborLeft.y);
 
-                    int upperIndex = index - 3;
-                    int lowerIndex = index + 3;
-                    int leftIndex = index - 1;
-                    int rightIndex = index + 1;
+                    assignment = new ControllerAssignment();
+                    assignment.deviceId = -1;
+                    assignment.profile = "";
+                    assignment.isKeyboard = false;
+                    assignment.screenId = position.FlatIndex(rowSize, true);
 
-                    // Clamp upper limit
-                    upperIndex = upperIndex >= DisplayManager.hotspotCount ? -1 : upperIndex;
-                    lowerIndex = lowerIndex >= DisplayManager.hotspotCount ? -1 : lowerIndex;
-                    leftIndex = leftIndex >= DisplayManager.hotspotCount ? -1 : leftIndex;
-                    rightIndex = rightIndex >= DisplayManager.hotspotCount ? -1 : rightIndex;
-
-                    // Clamp lower limit
-                    upperPosition = (ScreenPosition)Mathf.Clamp(upperIndex, -1, 8);
-                    lowerPosition = (ScreenPosition)Mathf.Clamp(lowerIndex, -1, 8);
-                    leftPosition = (ScreenPosition)Mathf.Clamp(leftIndex, -1, 8);
-                    rightPosition = (ScreenPosition)Mathf.Clamp(rightIndex, -1, 8);
-
-                    // Repeat for upper shift
-                    int upperShiftPositionInt = (int)upperPosition - 3;
-                    int lowerShiftPositionInt = (int)lowerPosition + 3;
-                    int leftShiftPositionInt = (int)leftPosition - 1;
-                    int rightShiftPositionInt = (int)rightPosition + 1;
-
-                    upperShiftPositionInt = upperShiftPositionInt >= DisplayManager.hotspotCount ? -1 : upperShiftPositionInt;
-                    lowerShiftPositionInt = lowerShiftPositionInt >= DisplayManager.hotspotCount ? -1 : lowerShiftPositionInt;
-                    rightShiftPositionInt = rightShiftPositionInt >= DisplayManager.hotspotCount ? -1 : rightShiftPositionInt;
-                    leftShiftPositionInt = leftShiftPositionInt >= DisplayManager.hotspotCount ? -1 : leftShiftPositionInt;
-
-                    upperShiftPosition = (ScreenPosition)Mathf.Clamp(upperShiftPositionInt, -1, 8);
-                    lowerShiftPosition = (ScreenPosition)Mathf.Clamp(lowerShiftPositionInt, -1, 8);
-                    leftShiftPosition = (ScreenPosition)Mathf.Clamp(leftShiftPositionInt, -1, 8);
-                    rightShiftPosition = (ScreenPosition)Mathf.Clamp(rightShiftPositionInt, -1, 8);
+                    this.isMainSlot = isMainSlot;
+                    this.isCenter = isCenter;
                 }
-
-                public bool Matches(int deviceId, bool isKeyboard)
+                public void Validate()
                 {
-                    return (deviceId == this.deviceId && isKeyboard == this.isKeyboard);
+                    neighborUp = Validate(neighborUp);
+                    neighborRight = Validate(neighborRight);
+                    neighborDown = Validate(neighborDown);
+                    neighborLeft = Validate(neighborLeft);
+
+                    neighborUpShift = Validate(neighborUpShift);
+                    neighborRightShift = Validate(neighborRightShift);
+                    neighborDownShift = Validate(neighborDownShift);
+                    neighborLeftShift = Validate(neighborLeftShift);
                 }
-
-                private int Validate(int2 position)
+                public void Load(ControllerAssignment newAssignment)
                 {
-                    if (position.x < 0)
-                        position.x = -1;
-                    if(position.x > )
+                    Debug.Log($"Loading new assignment: {newAssignment.deviceId}");
+                    assignment.deviceId = newAssignment.deviceId;
+                    assignment.isKeyboard = newAssignment.isKeyboard;
+                }
+                public void Reset()
+                {
+                    assignment.deviceId = -1;
+                    assignment.isKeyboard = false;
+                }
+                private int2 Validate(int2 position)
+                {
+                    if (position.x > -1 && position.x < DisplayManager.rowSize &&
+                        position.y > -1 && position.y < DisplayManager.rowSize)
+                        return position;
+
+                    position = new int2(-1, -1);
+
+                    return position;
                 }
             }
             public enum ScreenPosition

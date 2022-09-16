@@ -9,13 +9,16 @@ using UnityEngine.UI;
 using DoDad.Library.UI;
 using System.Collections;
 using UnityEngine.Events;
+using DoDad.Library.Events;
 
 namespace DoDad.UI.Components
 {
     public class ControllerIcon : MonoBehaviour
     {
         #region Variables
-        public static IconDragEvent onIconDrag;
+        public static List<ControllerIcon> activeIcons { get; private set; }
+        public static MonoEvent onIconAdded { get; private set; }
+        public static MonoEvent onIconRemoved { get; private set; }
 
         private static readonly float cursorFollowerSpeed = 0.1f;
         private static readonly float iconFollowerSpeed = 0.8f;
@@ -25,27 +28,19 @@ namespace DoDad.UI.Components
         private static readonly Color restingColor = new Color(1, 1, 1, 0.5f);
         private static readonly Color activityColor = new Color(1, 1, 1, 1);
 
-        private static List<Func<ControllerIcon, int>> convertMethods;
+        public MonoEvent onStartDrag;
+        public MonoEvent onStopDrag;
 
         public Controller controller;
+        public Follower cursorFollower { get; private set; }
 
         public GameObject xMark;
         public GameObject checkMark;
-        public RectTransform follower
-        {
-            get
-            {
-                return cursorFollower.GetComponent<RectTransform>();
-            }
-        }
-        public bool isDragging = false;
-        public bool hasFollower = false;
-
-        public int ScreenIndex = -1;
+        
+        public bool isDragging { get; private set; }
         
         private AssignmentStatus assignmentStatus;
 
-        private Follower cursorFollower;
         private Follower iconFollower;
         private ReadyButton button;
         private Image iconImage;
@@ -60,7 +55,17 @@ namespace DoDad.UI.Components
         public void Awake()
         {
             rectTransform = gameObject.GetComponent<RectTransform>();
-            onIconDrag = new IconDragEvent();
+
+             // TODO initialization methods
+            if (activeIcons == null)
+            {
+                activeIcons = new List<ControllerIcon>();
+                onIconAdded = new MonoEvent();
+                onIconRemoved = new MonoEvent();
+            }
+
+            onStartDrag = new MonoEvent();
+            onStopDrag = new MonoEvent();
         }
         public void OnEnable()
         {
@@ -74,13 +79,22 @@ namespace DoDad.UI.Components
             ToggleEvents();
             PopInIconFollower();
             RefreshAssignmentStatus();
+            AddActiveIcon();
         }
         public void OnDisable()
         {
+            RemoveActiveIcon();
+
             if (controller == null)
                 return;
 
             ToggleEvents(false);
+        }
+        public void OnDestroy()
+        {
+            activeIcons.Clear();
+            onIconAdded = null;
+            onIconRemoved = null;
         }
         public void Update()
         {
@@ -142,17 +156,23 @@ namespace DoDad.UI.Components
         }
         #endregion
 
-        #region Public Static Methods
-        public static void AddDisplayListener(DisplayManager manager)
+        #region Update Active Icons
+        private void AddActiveIcon()
         {
-            if (convertMethods == null)
-                convertMethods = new List<Func<ControllerIcon, int>>();
-
-            convertMethods.Add(new Func<ControllerIcon, int>(manager.OnIconDrag));
+            activeIcons.Add(this);
+            onIconAdded.Invoke(this);
         }
+        private void RemoveActiveIcon()
+        {
+            activeIcons.Remove(this);
+            onIconRemoved.Invoke(this);
+        }
+        #endregion
+
+        #region Public Static Methods
         private static void DestroyReferences()
         {
-            convertMethods = null;
+
         }
         #endregion
 
@@ -191,18 +211,21 @@ namespace DoDad.UI.Components
         
         private void BeginDrag()
         {
-            if (convertMethods == null)
-                return;
-            if (convertMethods.Count == 0)
-                return;
+            //if (convertMethods == null)
+            //    return;
+            //if (convertMethods.Count == 0)
+            //    return;
 
             cursorFollower.gameObject.SetActive(true);
-            onIconDrag.Invoke(this);
+            
+            //onIconDrag.Invoke(this);
 
-            foreach(Func<ControllerIcon, int> function in convertMethods)
-            {
-                function.Invoke(this);
-            }
+            //foreach(Func<ControllerIcon, int> function in convertMethods)
+            //{
+                //function.Invoke(this);
+            //}
+
+            onStartDrag.Invoke(this);
         }
         private void PopInIconFollower()
         {
@@ -294,7 +317,6 @@ namespace DoDad.UI.Components
             }
             else if(assignmentStatus == AssignmentStatus.Unassigned)
             {
-                Debug.Log("Setting checkmarks to false");
                 checkMark.SetActive(false);
                 xMark.SetActive(false);
             }
@@ -304,9 +326,11 @@ namespace DoDad.UI.Components
             cursorFollower.gameObject.SetActive(false);
             isDragging = false;
 
-            DisplayManager.instance.RequestDropAssignment(this, cursorFollower);
+            //DisplayManager.instance.RequestDropAssignment(this, cursorFollower);
 
-            RefreshAssignmentStatus();
+            //RefreshAssignmentStatus();
+
+            onStopDrag.Invoke(this);
         }
         public void RefreshAssignmentStatus()
         {

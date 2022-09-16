@@ -255,7 +255,7 @@ namespace DoDad.UI.Components
                         if (controller.type == ControllerType.Mouse)
                             continue;
 
-                        if (controller.id == assignment.AssignedDeviceId && assignment.IsKeyboard == (controller.type == ControllerType.Keyboard))
+                        if (controller.id == assignment.deviceId && assignment.isKeyboard == (controller.type == ControllerType.Keyboard))
                         {
                             CreateIcon(assignment, controller);
                             break;
@@ -311,7 +311,7 @@ namespace DoDad.UI.Components
 
                 icon.enabled = true;
 
-                if (assignment.AssignedDisplay > -1)
+                if (assignment.displayId > -1)
                     icon.SetAssignmentStatus(ControllerIcon.AssignmentStatus.Assigned);
 
                 // Notify DisplayManager of new assignment
@@ -328,7 +328,7 @@ namespace DoDad.UI.Components
 
                 foreach (XSplitScreen.SplitScreenConfiguration.ControllerAssignment assignment in XSplitScreen.Configuration.ControllerAssignments)
                 {
-                    if (newController.id == assignment.AssignedDeviceId && assignment.IsKeyboard == (newController.type == ControllerType.Keyboard))
+                    if (newController.id == assignment.deviceId && assignment.isKeyboard == (newController.type == ControllerType.Keyboard))
                     {
                         CreateIcon(assignment, newController);
                     }
