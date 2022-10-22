@@ -1,40 +1,22 @@
 # Description
 
-A GUI-based splitscreen mod in development. My son really wanted to play Risk of Rain 2 together but all the splitscreen mods were broken by the latest updates. If you appreciate the work please join the Discord and try to play a game with us!
+Easy drag & drop splitscreen assignments
 
 https://discord.gg/maHhJSv62G
 
-Please see the Limitations section below for important information
-
-Looking for testers. Anyone with multiple gamepads or monitors is welcome to send me a DM to test new features.
-
 # Instructions
 
-1. Install the plugin and click the 'Enable' button in the XSplitScreen menu
+1. Install the plugin and after launching the game click the XSplitScreen button in the main menu
 
-If there aren't enough profiles the first profile will be copied. Console commands are also available.
+2. Drag controllers to the desired screens
 
-# Keybinds
+3. Click the Profiles button and assign profiles
 
-`F2`
-
-- Switch between vertical and horizontal splitscreen while ingame
+4. Modify options as needed
 
 # Console commands
 
 Commands that affect local users can only be used in the main menu
-
-`xsplitset [1-4] [kb]`
-
- - Set the number of local players and optionally request a keyboard player
-
-`xsplitswap [1-4] [1-4]`
-
- - Swap the profiles of two signed in users
-
-`xdevice_status`
-
- - View who owns what device
 
 ## Planned
 
@@ -44,11 +26,6 @@ Commands that affect local users can only be used in the main menu
 - Keyboard mode button
 - Risk of Options support
 - Config customization for default settings
-
-## Limitations
-
-- v1.1.0 Gamepads *should* work - need testers
-- v1.0.0 As of right now the mod only officially supports a single keyboard and mouse player and a single gamepad player
 
 ## Known Bugs
 
@@ -62,6 +39,10 @@ Commands that affect local users can only be used in the main menu
 - iDeathHD for creating FixedSplitScreen
 
 ## Changelog
+
+**2.0.0**
+
+- Enabled the assignment window
 
 **1.2.1**
 

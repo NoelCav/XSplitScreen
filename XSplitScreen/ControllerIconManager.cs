@@ -155,31 +155,44 @@ namespace XSplitScreen
         }
         public void OnAssignmentUpdated(Controller controller, Assignment assignment)
         {
+            Log.LogDebug($" .: ControllerIconManager.OnAssignmentUpdated BEGIN :.");
+            Log.LogDebug(assignment);
+            bool createIcon = true;
+
             for (int e = 0; e < icons.Count; e++)
             {
                 if (icons[e].assignment.Matches(assignment))
                 {
                     if (controller == null)
                     {
+                        Log.LogDebug($"Destroying icon");
                         Destroy(icons[e].gameObject);
                         icons.RemoveAt(e);
                     }
                     else
                     {
-                        icons[e].assignment = assignment;
+                        Log.LogDebug($"Updating assignment");
+                        icons[e].UpdateAssignment(assignment);
+                        icons[e].statusImage.sprite = sprite_Checkmark;
                     }
 
-                    return;
+                    createIcon = false;
+
+                    break;
                 }
             }
 
-            CreateIcon(assignment);
+            if (createIcon)
+                CreateIcon(assignment);
+
+            GraphManager.instance.ReloadGraph();
+            Log.LogDebug($" .: ControllerIconManager.OnAssignmentUpdated END :.");
         }
         private void CreateIcon(Assignment assignment)
         {
             Icon icon = Instantiate(iconPrefab).GetComponent<Icon>();
 
-            icon.name = $"(Icon) {assignment.controller.name}";
+            icon.name = $"CreateIcon (Icon) {assignment.controller.name}";
             icon.assignment = assignment;
             icon.transform.SetParent(iconContainer);
 
@@ -201,16 +214,8 @@ namespace XSplitScreen
             icon.displayImage.sprite = icon.deviceImage.sprite;
             icon.displayImage.SetNativeSize();
 
-            if(icon.assignment.isAssigned)
-            {
-                icon.statusImage.sprite = sprite_Checkmark;
-                icon.statusImage.SetNativeSize();
-                icon.statusImage.enabled = true;
-            }
-            else
-            {
-                icon.statusImage.enabled = false;
-            }
+            icon.statusImage.sprite = sprite_Checkmark;
+            icon.statusImage.SetNativeSize();
         }
         #endregion
 
@@ -231,6 +236,10 @@ namespace XSplitScreen
             #region Variables
             private static readonly Color normalColor = new Vector4(1, 1 , 1, 0.4f);
             private static readonly Color buttonPressColor = new Vector4(1, 1, 1, 1f);
+
+            private static readonly float normalAlpha = 0.4f;
+            private static readonly float buttonPressAlpha = 1f;
+            private static readonly float colorSpeed = 20f;
 
             private static readonly float iconFollowerSpeed = 0.4f;
             private static readonly float cursorFollowerSpeed = 0.1f;
@@ -255,6 +264,10 @@ namespace XSplitScreen
             public IconEvent onStopDragIcon { get; private set; }
 
             public bool potentialReassignment = false;
+            public bool showStatusImage = false;
+
+            private Vector4 targetColor = new Vector4(1, 1, 1, 0);
+            private Vector4 statusColor = Color.clear;
 
             private float activityTimer = 0f;
             #endregion
@@ -264,23 +277,41 @@ namespace XSplitScreen
             {
                 if(assignment.controller.GetAnyButton())
                 {
-                    deviceImage.color = buttonPressColor;
-                    displayImage.color = buttonPressColor;
-
+                    targetColor.w = buttonPressAlpha;
                     activityTimer = activityTimeout;
                 }
                 else
                 {
-                    if(activityTimer > 0)
+                    if (activityTimer > 0)
                         activityTimer -= Time.unscaledDeltaTime;
 
-                    if(activityTimer <= 0)
+                    if (activityTimer <= 0)
                     {
-                        deviceImage.color = Color.Lerp(deviceImage.color, normalColor, Time.unscaledDeltaTime * 20f);
-                        displayImage.color = Color.Lerp(deviceImage.color, normalColor, Time.unscaledDeltaTime * 20f);
+                        targetColor.w = normalAlpha;
                     }
                 }
 
+                deviceImage.color = Color.Lerp(deviceImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
+
+                if(showStatusImage)
+                    statusImage.color = Color.Lerp(statusImage.color, Color.white, Time.unscaledDeltaTime * colorSpeed);
+                else
+                    statusImage.color = Color.Lerp(statusImage.color, Color.clear, Time.unscaledDeltaTime * colorSpeed);
+
+                cursorImage.color = Color.Lerp(cursorImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
+
+                if(displayFollower.enabled)
+                    displayImage.color = Color.Lerp(displayImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
+                else
+                    displayImage.color = Color.Lerp(displayImage.color, new Vector4(targetColor.x, targetColor.y, targetColor.z, 0f), Time.unscaledDeltaTime * colorSpeed);
+
+            }
+            public void OnDestroy()
+            {
+                Log.LogDebug($"{name} destroying");
+                Destroy(displayFollower.gameObject);
+                Destroy(iconFollower.gameObject);
+                Destroy(cursorFollower.gameObject);
             }
             #endregion
 
@@ -291,16 +322,23 @@ namespace XSplitScreen
                 onStopDragIcon = new IconEvent();
 
                 // TODO organize
-                displayFollower = new GameObject($"(Display Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower)).GetComponent<Follower>();
+                displayFollower = new GameObject($"(Display Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 displayFollower.transform.SetParent(followerContainer);
                 displayFollower.transform.localScale = Vector3.one * 0.3f;
                 displayFollower.movementSpeed = iconFollowerSpeed;
                 displayFollower.smoothMovement = true;
 
                 displayImage = displayFollower.GetComponent<Image>();
-                displayImage.raycastTarget = false;
+                displayImage.color = targetColor;
 
-                displayFollower.gameObject.SetActive(false);
+                displayFollower.enabled = false;
+
+                XButton displayButton = displayFollower.GetComponent<XButton>();
+                displayButton.onPointerDown.AddListener(OnPointerDownIcon);
+                displayButton.onClickMono.AddListener(OnClickIcon);
+
+                displayButton.onHoverStart.AddListener(OnHoverStart);
+                displayButton.onHoverStop.AddListener(OnHoverStop);
 
                 iconFollower = new GameObject($"(Icon Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 iconFollower.transform.SetParent(followerContainer);
@@ -323,10 +361,11 @@ namespace XSplitScreen
                 statusObject.transform.localScale = Vector3.one;
 
                 deviceImage = iconFollower.GetComponent<Image>();
+                deviceImage.color = targetColor;
 
                 statusImage = statusObject.AddComponent<Image>();
                 statusImage.raycastTarget = false;
-                statusImage.enabled = false;
+                statusImage.color = Color.clear;
 
                 cursorFollower = new GameObject($"(Cursor Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 cursorFollower.transform.SetParent(followerContainer);
@@ -343,20 +382,28 @@ namespace XSplitScreen
                 button.allowOutsiderOnPointerUp = true;
 
                 cursorImage = cursorFollower.GetComponent<Image>();
-                cursorImage.color = normalColor;
-
+                cursorImage.color = targetColor;
+                
                 cursorFollower.gameObject.SetActive(false);
-            }
-            private void ToggleListeners(bool status)
-            {
-                if(status)
-                {
-                    //configuration.onAssignmentUpdate.AddListener()
-                }
+
+                targetColor.w = 1;
+
+                UpdateAssignment(assignment);
             }
             #endregion
 
-            #region Display
+            #region Display & Icon
+            public void SetReassignmentStatus(bool status)
+            {
+                potentialReassignment = status;
+
+                displayImage.raycastTarget = !status;
+
+                if (!assignment.isAssigned)
+                    displayImage.raycastTarget = false;
+
+                // some kind of bug causing context changing? or something? idk
+            }
             public void UpdateDisplayFollower(RectTransform target)
             {
                 if(target == null)
@@ -369,6 +416,12 @@ namespace XSplitScreen
                     displayFollower.gameObject.SetActive(true);
                 }
             }
+            public void UpdateAssignment(Assignment assignment)
+            {
+                this.assignment = assignment;
+
+                showStatusImage = assignment.isAssigned;
+            }
             #endregion
 
             #region Events
@@ -376,6 +429,8 @@ namespace XSplitScreen
             {
                 if (assignment.isAssigned)
                     statusImage.sprite = instance.sprite_Xmark;
+
+                Log.LogDebug($"{name}: {assignment}");
             }
             public void OnHoverStop(MonoBehaviour mono)
             {
@@ -392,6 +447,7 @@ namespace XSplitScreen
                     return;
 
                 isAssigning = true;
+                showStatusImage = false;
 
                 cursorImage.sprite = deviceImage.sprite;
                 cursorImage.SetNativeSize();

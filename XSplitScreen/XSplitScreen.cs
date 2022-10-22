@@ -418,10 +418,12 @@ namespace XSplitScreen
             public void PushChanges(List<Assignment> changes)
             {
                 Log.LogDebug($" - Configuration.OnPushChanges -");
-                
+
+                var readOnly = changes.ToArray();
+
                 int counter = 0;
 
-                foreach (Assignment change in changes)
+                foreach (Assignment change in readOnly)
                 {
                     for(int e = 0; e < assignments.Count; e++)
                     {
@@ -429,32 +431,13 @@ namespace XSplitScreen
                         {
                             assignments[e] = change;
                             counter++;
-                            Log.LogDebug($"[{counter}] {(change.position.IsPositive() ? "+" : "-")} {change.controller.name} to {change.position}");
+                            Log.LogDebug($" - Pushing [{counter}] {(change.position.IsPositive() ? "+" : "-")} {change.controller.name} to {change.position}");
                             onAssignmentUpdate.Invoke(change.controller, change);
                         }
                     }
                 }
 
-                return;
-
-                for (int e = 0; e < assignments.Count; e++)
-                {
-                    foreach (Assignment change in changes)
-                    {
-                        if (change.controller is null)
-                            continue;
-
-                        if(assignments[e].Matches(change.controller))
-                        {
-                            counter++;
-                            Log.LogDebug($"[{counter}] {(change.position.IsPositive() ? "+" : "-")} {change.controller.name} to {change.position}");
-                            //Log.LogDebug($"Loading change: {change}");
-                            // need to handle unloaded preferences somewhere
-                            assignments[e] = change;
-                            onAssignmentUpdate.Invoke(change.controller, change);
-                        }
-                    }
-                }
+                Save();
             }
             public void Save()
             {
@@ -537,7 +520,9 @@ namespace XSplitScreen
                     {
                         if(assignment.Matches(preferences[e]))
                         {
-                            preferences[e].Update(assignment);
+                            var newPreference = preferences[e];
+                            newPreference.Update(assignment);
+                            preferences[e] = newPreference;
                             break;
                         }
                     }
@@ -599,6 +584,12 @@ namespace XSplitScreen
 
             public bool isKeyboard;
 
+            public override string ToString()
+            {
+                string newFormat = "Preference(deviceId = '{0}', isKeyboard = '{1}', displayId = '{2}', position = '{3}', context = '{4})";
+
+                return string.Format(newFormat, deviceId, isKeyboard, displayId, position, context);
+            }
             public bool Matches(Controller controller)
             {
                 return controller.id == deviceId && isKeyboard == (controller.type == ControllerType.Keyboard);
@@ -740,7 +731,7 @@ namespace XSplitScreen
             public static readonly string MSG_SPLITSCREEN_DISABLE_TOKEN = "XSPLITSCREEN_DISABLE";
             public static readonly string MSG_SPLITSCREEN_DISABLE_STRING = "Disable";
             public static readonly string MSG_TITLE_BUTTON_TOKEN = "TITLE_XSPLITSCREEN";
-            public static readonly string MSG_TITLE_BUTTON_STRING = "XSplitScreen";
+            public static readonly string MSG_TITLE_BUTTON_STRING = "Splitscreen";
             public static readonly string MSG_HOVER_TOKEN = "TITLE_XSPLITSCREEN_DESC";
             public static readonly string MSG_HOVER_STRING = "Modify splitscreen settings.";
             public static readonly string MSG_UNSET_STRING = "Unset";
