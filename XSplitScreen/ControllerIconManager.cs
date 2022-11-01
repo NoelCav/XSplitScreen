@@ -33,6 +33,8 @@ namespace XSplitScreen
 
         public IconEvent onStartDragIcon { get; private set; }
         public IconEvent onStopDragIcon { get; private set; }
+        public IconEvent onIconAdded { get; private set; }
+        public IconEvent onIconRemoved { get; private set; }
 
         private Texture2D texture_Dinput;
         private Texture2D texture_Xinput;
@@ -69,6 +71,8 @@ namespace XSplitScreen
 
             onStartDragIcon = new IconEvent();
             onStopDragIcon = new IconEvent();
+            onIconAdded = new IconEvent();
+            onIconRemoved = new IconEvent();
 
             texture_Dinput = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/dinput.png");
             texture_Xinput = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/xinput.png");
@@ -138,7 +142,37 @@ namespace XSplitScreen
         #endregion
 
         #region Icons
-        public Sprite GetIcon(Controller controller)
+        public void OnAssignmentUpdated(Controller controller, Assignment assignment)
+        {
+            bool createIcon = true;
+
+            for (int e = 0; e < icons.Count; e++)
+            {
+                if (icons[e].assignment.Matches(assignment))
+                {
+                    if (controller == null)
+                    {
+                        onIconRemoved.Invoke(icons[e], assignment);
+                        Destroy(icons[e].gameObject);
+                        icons.RemoveAt(e);
+                    }
+                    else
+                    {
+                        icons[e].UpdateAssignment(assignment);
+                    }
+
+                    createIcon = false;
+
+                    break;
+                }
+            }
+
+            if (createIcon)
+                CreateIcon(assignment);
+
+            //GraphManager.instance.ReloadGraph();
+        }
+        public Sprite GetDeviceSprite(Controller controller)
         {
             Sprite sprite = sprite_Xinput;
 
@@ -153,46 +187,12 @@ namespace XSplitScreen
 
             return sprite;
         }
-        public void OnAssignmentUpdated(Controller controller, Assignment assignment)
-        {
-            Log.LogDebug($" .: ControllerIconManager.OnAssignmentUpdated BEGIN :.");
-            Log.LogDebug(assignment);
-            bool createIcon = true;
-
-            for (int e = 0; e < icons.Count; e++)
-            {
-                if (icons[e].assignment.Matches(assignment))
-                {
-                    if (controller == null)
-                    {
-                        Log.LogDebug($"Destroying icon");
-                        Destroy(icons[e].gameObject);
-                        icons.RemoveAt(e);
-                    }
-                    else
-                    {
-                        Log.LogDebug($"Updating assignment");
-                        icons[e].UpdateAssignment(assignment);
-                        icons[e].statusImage.sprite = sprite_Checkmark;
-                    }
-
-                    createIcon = false;
-
-                    break;
-                }
-            }
-
-            if (createIcon)
-                CreateIcon(assignment);
-
-            GraphManager.instance.ReloadGraph();
-            Log.LogDebug($" .: ControllerIconManager.OnAssignmentUpdated END :.");
-        }
+        
         private void CreateIcon(Assignment assignment)
         {
             Icon icon = Instantiate(iconPrefab).GetComponent<Icon>();
 
-            icon.name = $"CreateIcon (Icon) {assignment.controller.name}";
+            icon.name = $"(Icon) {assignment.controller.name}";
             icon.assignment = assignment;
             icon.transform.SetParent(iconContainer);
 
@@ -200,15 +200,16 @@ namespace XSplitScreen
             icon.onStartDragIcon.AddListener(OnStartDragIcon);
             icon.onStopDragIcon.AddListener(OnStopDragIcon);
 
-            UpdateIcon(icon);
+            UpdateIconDeviceSprite(icon);
 
             icon.gameObject.SetActive(true);
 
             icons.Add(icon);
+            onIconAdded.Invoke(icon, assignment);
         }
-        private void UpdateIcon(Icon icon)
+        private void UpdateIconDeviceSprite(Icon icon)
         {
-            icon.deviceImage.sprite = GetIcon(icon.assignment.controller);
+            icon.deviceImage.sprite = GetDeviceSprite(icon.assignment.controller);
             icon.deviceImage.SetNativeSize();
 
             icon.displayImage.sprite = icon.deviceImage.sprite;
@@ -220,13 +221,13 @@ namespace XSplitScreen
         #endregion
 
         #region Events
-        public void OnStartDragIcon(Icon icon)
+        public void OnStartDragIcon(Icon icon, Assignment assignment)
         {
-            onStartDragIcon.Invoke(icon);
+            onStartDragIcon.Invoke(icon, assignment);
         }
-        public void OnStopDragIcon(Icon icon)
+        public void OnStopDragIcon(Icon icon, Assignment assignment)
         {
-            onStopDragIcon.Invoke(icon);
+            onStopDragIcon.Invoke(icon, assignment);
         }
         #endregion
 
@@ -265,6 +266,7 @@ namespace XSplitScreen
 
             public bool potentialReassignment = false;
             public bool showStatusImage = false;
+            public bool hasTemporaryAssignment = false;
 
             private Vector4 targetColor = new Vector4(1, 1, 1, 0);
             private Vector4 statusColor = Color.clear;
@@ -421,6 +423,8 @@ namespace XSplitScreen
                 this.assignment = assignment;
 
                 showStatusImage = assignment.isAssigned;
+
+                statusImage.sprite = instance.sprite_Checkmark;
             }
             #endregion
 
@@ -430,7 +434,7 @@ namespace XSplitScreen
                 if (assignment.isAssigned)
                     statusImage.sprite = instance.sprite_Xmark;
 
-                Log.LogDebug($"{name}: {assignment}");
+                Log.LogDebug($"ControllerIconManager.OnHoverStart {name}: {assignment}");
             }
             public void OnHoverStop(MonoBehaviour mono)
             {
@@ -443,10 +447,10 @@ namespace XSplitScreen
             }
             public void OnPointerDownIcon(MonoBehaviour mono)
             {
-                if (isAssigning)
+                if (hasTemporaryAssignment)
                     return;
 
-                isAssigning = true;
+                hasTemporaryAssignment = true;
                 showStatusImage = false;
 
                 cursorImage.sprite = deviceImage.sprite;
@@ -467,7 +471,7 @@ namespace XSplitScreen
 
                 //statusImage.enabled = false;
 
-                onStartDragIcon.Invoke(this);
+                onStartDragIcon.Invoke(this, assignment);
             }
             public void OnClickCursor(MonoBehaviour mono)
             {
@@ -476,15 +480,15 @@ namespace XSplitScreen
             public void OnPointerUpCursor(MonoBehaviour mono)
             {
                 cursorFollower.gameObject.SetActive(false);
-                onStopDragIcon.Invoke(this);
-                isAssigning = false;
+                onStopDragIcon.Invoke(this, assignment);
+                hasTemporaryAssignment = false;
             }
             #endregion
         }
         #endregion
 
         #region Definitions
-        public class IconEvent : UnityEvent<Icon> { }
+        public class IconEvent : UnityEvent<Icon, Assignment> { }
         #endregion
     }
 }

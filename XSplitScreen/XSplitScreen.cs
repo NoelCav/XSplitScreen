@@ -356,8 +356,19 @@ namespace XSplitScreen
             }
             private void InitializeAssignments()
             {
+                // Preferences should save the player id
+                // Player id should be drag & drop
+                // Controllers must be auto assigned or manually assigned during customization and do not change the splitscreen configuration
+
+
+                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.autoAssignJoysticks = {ReInput.configuration.autoAssignJoysticks}");
+                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.maxJoysticksPerPlayer = {ReInput.configuration.maxJoysticksPerPlayer}");
+                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.reassignJoystickToPreviousOwnerOnReconnect = {ReInput.configuration.reassignJoystickToPreviousOwnerOnReconnect}");
+                //Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration. = {ReInput.controllers.}");
+
                 foreach (Controller controller in ReInput.controllers.Controllers)
                 {
+                    Log.LogDebug($"Configuration.InitializeAssignments controller.hardwareTypeGuid: {controller.hardwareTypeGuid}");
                     LoadAssignment(controller);
                 }
             }
@@ -415,10 +426,19 @@ namespace XSplitScreen
             #endregion
 
             #region Assignments
+            private void LoadAssignment(Controller controller)
+            {
+                if (controller.type == ControllerType.Mouse)
+                    return;
+
+                Assignment assignment = GetPreference(controller);
+
+                assignments.Add(assignment);
+
+                onAssignmentUpdate.Invoke(controller, assignment);
+            }
             public void PushChanges(List<Assignment> changes)
             {
-                Log.LogDebug($" - Configuration.OnPushChanges -");
-
                 var readOnly = changes.ToArray();
 
                 int counter = 0;
@@ -431,7 +451,6 @@ namespace XSplitScreen
                         {
                             assignments[e] = change;
                             counter++;
-                            Log.LogDebug($" - Pushing [{counter}] {(change.position.IsPositive() ? "+" : "-")} {change.controller.name} to {change.position}");
                             onAssignmentUpdate.Invoke(change.controller, change);
                         }
                     }
@@ -455,17 +474,6 @@ namespace XSplitScreen
                 }
 
             }
-            private void LoadAssignment(Controller controller)
-            {
-                if (controller.type == ControllerType.Mouse)
-                    return;
-
-                Assignment assignment = GetPreference(controller);
-
-                assignments.Add(assignment);
-
-                onAssignmentUpdate.Invoke(controller, assignment);
-            }
 
             #region Helpers
             private Assignment GetPreference(Controller controller)
@@ -484,7 +492,18 @@ namespace XSplitScreen
                 }
 
                 if(!foundPreference)
+                {
                     CreatePreference(controller);
+                    newAssignment.Load(preferences[preferences.Count - 1]);
+                }
+
+                if(newAssignment.isAssigned)
+                {
+                    if(!newAssignment.context.IsPositive())
+                    {
+                        newAssignment.context = new int2(1, 0);
+                    }
+                }
 
                 return newAssignment;
             }
@@ -510,7 +529,7 @@ namespace XSplitScreen
 
                 preferences.Add(newPreference);
 
-                Log.LogMessage($"Created new preference: id = '{controller.id}' ({controller.type})");
+                Log.LogMessage($"Created new preference for '{controller.name}'");
             }
             private void UpdatePreferences()
             {
@@ -690,13 +709,13 @@ namespace XSplitScreen
                 profile = assignment.profile;
                 context = assignment.context;
             }
-            public void ClearAssignmentData()
+            public void ClearAssignment()
             {
                 this.controller = null;
                 profile = "";
                 context = int2.negative;
             }
-            public void ClearScreenData()
+            public void ClearScreen()
             {
                 position = int2.negative;
                 context = int2.negative;
@@ -704,7 +723,7 @@ namespace XSplitScreen
             public void Initialize()
             {
                 controller = null;
-                ClearScreenData();
+                ClearScreen();
                 displayId = -1;
                 profile = "";
             }

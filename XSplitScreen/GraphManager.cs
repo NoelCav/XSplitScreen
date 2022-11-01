@@ -28,6 +28,8 @@ namespace XSplitScreen
         private UnityEvent onGraphUpdated;
 
         private List<Assignment> changeBuffer;
+
+        private Assignment[][] cachedAssignments;
         #endregion
 
         #region Initialization & Exit
@@ -36,7 +38,7 @@ namespace XSplitScreen
             InitializeReferences();
             InitializeViewport();
             InitializeListeners();
-            InitializeAssignments();
+            InitializeGraph();
             PrintGraph("Initialized");
         }
         private void InitializeReferences()
@@ -47,6 +49,33 @@ namespace XSplitScreen
             instance = this;
 
             graph = new NodeGraph<Assignment>(configuration.graphDimensions, true);
+
+            display = gameObject.AddComponent<GraphDisplay>();
+
+            changeBuffer = new List<Assignment>();
+
+            onGraphUpdated = new UnityEvent();
+        }
+        private void InitializeViewport()
+        {
+            RectTransform rectTransform = GetComponent<RectTransform>();
+            //rectTransform.anchorMin = new Vector2(0f, 0.75f);
+            //rectTransform.anchorMax = new Vector2(0f, 0.5f);
+            display.Initialize();
+            display.GetComponent<LayoutElement>().preferredHeight = display.screenDimensions.y * configuration.graphDimensions.y + 50f;
+            display.GetComponent<LayoutElement>().preferredWidth = display.screenDimensions.x * configuration.graphDimensions.x + 50f;
+            onGraphUpdated.AddListener(display.OnGraphUpdated);
+        }
+        private void InitializeListeners()
+        {
+            ControllerIconManager.instance.onStartDragIcon.AddListener(OnStartDragIcon);
+            ControllerIconManager.instance.onStopDragIcon.AddListener(OnStopDragIcon);
+            ControllerIconManager.instance.onIconAdded.AddListener(OnIconAdded);
+            ControllerIconManager.instance.onIconRemoved.AddListener(OnIconRemoved);
+        }
+        private void InitializeGraph()
+        {
+            Log.LogDebug($"GraphManager.InitializeGraph");
 
             int2[] mainScreens = new int2[4]
             {
@@ -81,93 +110,94 @@ namespace XSplitScreen
 
             graph.SetNodeData(data);
 
-            display = gameObject.AddComponent<GraphDisplay>();
+            LoadPreferencesToGraph();
 
-            changeBuffer = new List<Assignment>();
+            onGraphUpdated.Invoke();
+        }
+        #endregion
 
-            onGraphUpdated = new UnityEvent();
-        }
-        private void InitializeViewport()
+        #region Events
+        public void OnIconAdded(Icon icon, Assignment assignment)
         {
-            RectTransform rectTransform = GetComponent<RectTransform>();
-            //rectTransform.anchorMin = new Vector2(0f, 0.75f);
-            //rectTransform.anchorMax = new Vector2(0f, 0.5f);
-            display.Initialize();
-            display.GetComponent<LayoutElement>().preferredHeight = display.screenDimensions.y * configuration.graphDimensions.y + 50f;
-            display.GetComponent<LayoutElement>().preferredWidth = display.screenDimensions.x * configuration.graphDimensions.x + 50f;
-            onGraphUpdated.AddListener(display.OnGraphUpdated);
+            ReloadAssignments();
+            onGraphUpdated.Invoke();
+            Log.LogDebug($"GraphManager.OnIconAdded '{assignment}'");
+            PrintGraph("OnIconAdded");
         }
-        private void InitializeListeners()
+        public void OnIconRemoved(Icon icon, Assignment assignment)
         {
-            ControllerIconManager.instance.onStartDragIcon.AddListener(OnStartDragIcon);
-            ControllerIconManager.instance.onStopDragIcon.AddListener(OnStopDragIcon);
+            Unassign(assignment.controller);
+            ReloadAssignments();
+            PrintGraph("OnIconRemoved.ReloadAssignments");
+            PrintGraph("OnIconRemoved.Unassign");
+            cachedAssignments = graph.GetNodeData(true);
+            onGraphUpdated.Invoke();
+            Log.LogDebug($"GraphManager.OnIconRemoved '{assignment}'");
         }
-        private void InitializeAssignments()
+        public void OnStartDragIcon(Icon icon, Assignment assignment)
         {
-            Log.LogDebug($" + GraphManager.InitializeAssignments BEGIN +");
-            // Assign only ONE at a time
-            // Create new followers after potential updates
-            // If device is being unassigned then unassign from graph
-            // AND if device is NOT assigned to the graph then reset the graph to saved assignments
+            cachedAssignments = graph.GetNodeData(true);
+            icon.iconMonitorCoroutine = StartCoroutine(IconMonitor(icon));
+        }
+        public void OnStopDragIcon(Icon icon, Assignment assignment)
+        {
+            StopCoroutine(icon.iconMonitorCoroutine);
 
-            NodeType[] types = new NodeType[3]
+            var newAssignments = graph.GetNodeData(true);
+
+            List<Assignment> changeBuffer = new List<Assignment>();
+
+            for(int x = 0; x < newAssignments.Length; x++)
             {
-                NodeType.Primary,
-                NodeType.Secondary,
-                NodeType.Tertiary
-            };
-
-            foreach(NodeType type in types)
-            {
-                foreach (Assignment assignment in configuration.assignments)
+                for(int y = 0; y < newAssignments[x].Length; y++)
                 {
-                    if (assignment.isAssigned && assignment.displayId == ((ConfigurationManager.ControllerAssignmentState)ConfigurationManager.instance.stateMachine.GetState(State.State1)).currentDisplay)
+                    if (newAssignments[x][y].isAssigned)
+                        changeBuffer.Add(newAssignments[x][y]);
+                }
+            }
+
+            for(int xX = 0; xX < cachedAssignments.Length; xX++)
+            {
+                for(int yY = 0; yY < cachedAssignments[xX].Length; yY++)
+                {
+                    if(cachedAssignments[xX][yY].isAssigned)
                     {
-                        if (graph.GetNode(assignment.position).nodeType == type)
+                        bool stillAssigned = false;
+
+                        foreach (Assignment change in changeBuffer)
                         {
-                            foreach (Icon icon in ControllerIconManager.instance.icons)
+                            if(cachedAssignments[xX][yY].Matches(change.controller))
                             {
-                                if (icon.assignment.Matches(assignment))// && icon.assignment.isAssigned) -- ** CHANGE
-                                {
-                                    if(icon.assignment.isAssigned)
-                                    {
-                                        Log.LogDebug($"GraphManager.InitializeAssignments beginning assignment of '{icon.assignment.controller.name}'");
-                                        Assign(icon);
-                                    }
-                                    else
-                                    {
-                                        Log.LogDebug($"GraphManager.InitializeAssignments beginning unassignment of '{icon.assignment.controller.name}'");
-                                        Unassign(icon.assignment.controller);
-                                    }
-                                    //icon.SetReassignmentStatus(false);
-                                }
+                                stillAssigned = true;
+                                break;
                             }
+                        }
+
+                        if(!stillAssigned)
+                        {
+                            Assignment unassigned = cachedAssignments[xX][yY];
+                            unassigned.ClearScreen();
+
+                            changeBuffer.Add(unassigned);
                         }
                     }
                 }
             }
 
+            foreach (Assignment change in changeBuffer)
+                Log.LogDebug($"changeBuffer entry: '{change}'");
 
-            onGraphUpdated.Invoke();
-            Log.LogDebug($" + GraphManager.InitializeAssignments END +");
-        }
-        #endregion
+            configuration.PushChanges(changeBuffer);
 
-        #region Events
-        public void OnStartDragIcon(Icon icon)
-        {
-            icon.iconMonitorCoroutine = StartCoroutine(IconMonitor(icon));
-        }
-        public void OnStopDragIcon(Icon icon)
-        {
-            StopCoroutine(icon.iconMonitorCoroutine);
+            return;
+
 
             // Notify ConfigurationManager of assignment
             // Update screen's follower
 
             if(changeBuffer.Count == 0)
             {
-                OnPotentialAssignment(icon);
+                OnPotentialAssignment(icon, assignment);
             }
 
             changeBuffer.Reverse();
@@ -180,8 +210,31 @@ namespace XSplitScreen
             icon.SetReassignmentStatus(false);
             PrintGraph("OnStopDragIcon");
         }
-        public void OnPotentialAssignment(Icon icon)
+        // TODO
+
+        // Need to probably just rewrite it.
+        //
+        // Potential infinite loop involving events causing crash
+        // yeah just rewrite it
+        public void OnPotentialAssignment(Icon icon, Assignment newAssignment)
         {
+            Log.LogDebug($"GraphManager.OnPotentialAssignment newAssignment = '{newAssignment}'");
+
+            ReloadAssignments();
+            Unassign(newAssignment.controller);
+
+            if (newAssignment.isAssigned)
+            {
+                Assign(icon, newAssignment);
+            }
+
+            PrintGraph("OnPotentialAssignment");
+
+            onGraphUpdated.Invoke();
+            return;
+            ////////
+            ///
+
             Log.LogDebug($" .: GraphManager.OnPotentialAssignment BEGIN :.");
             Log.LogDebug(icon.assignment);
             changeBuffer.Clear();
@@ -194,7 +247,7 @@ namespace XSplitScreen
 
             if (icon.assignment.position.IsPositive())
             {
-                Assign(icon);
+                Assign(icon, newAssignment);
             }
 
             // track ALL potential changes and update affected devices during OnStopDragIcon
@@ -208,9 +261,40 @@ namespace XSplitScreen
         #endregion
 
         #region Graph
-        public void ReloadGraph()
+        public void ReloadAssignments()
         {
-            RevertPotentialChanges();
+            UnassignAll();
+            LoadPreferencesToGraph();
+        }
+        private void LoadPreferencesToGraph()
+        {
+            NodeType[] types = new NodeType[3]
+               {
+                NodeType.Primary,
+                NodeType.Secondary,
+                NodeType.Tertiary
+               };
+
+            foreach (NodeType type in types)
+            {
+                foreach (Assignment assignment in configuration.assignments)
+                {
+                    if (assignment.isAssigned && assignment.displayId == ((ControllerAssignmentState)ConfigurationManager.instance.stateMachine.GetState(State.State1)).currentDisplay)
+                    {
+                        if (graph.GetNode(assignment.position).nodeType == type)
+                        {
+                            foreach (Icon icon in ControllerIconManager.instance.icons)
+                            {
+                                if (icon.assignment.Matches(assignment) && icon.assignment.isAssigned)
+                                {
+                                    if (assignment.isAssigned)
+                                        Assign(icon, icon.assignment);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         private void RevertPotentialChanges()
         {
@@ -220,175 +304,206 @@ namespace XSplitScreen
             {
                 for (int y = 0; y < data[x].Length; y++)
                 {
-                    data[x][y].ClearAssignmentData();
+                    data[x][y].ClearAssignment();
                 }
             }
 
             graph.SetNodeData(data);
 
-            InitializeAssignments();
+            InitializeGraph();
         }
-        private void Assign(Icon icon)
+        private void Assign(Icon icon, Assignment newAssignment)
         {
+            Log.LogDebug($"GraphManager.Assign newAssignment = '{newAssignment}'");
+            var node = graph.GetNode(newAssignment.position);
 
-            var node = graph.GetNode(icon.assignment.position);
-
-            if (node.nodeData.data.Matches(icon.assignment))
+            // If device is already assigned to requested screen do nothing
+            if (node.nodeData.data.Matches(newAssignment))
             {
-                SetDevice(int2.one, icon.assignment);
+                SetAssignment(newAssignment.position, newAssignment);
                 return;
             }
 
             bool hasAssignments = GraphHasAssignments();
 
+            // If no assignments are present, assign to the center
             if (!hasAssignments)
             {
-                SetDevice(int2.one, icon.assignment);
+                SetAssignment(int2.one, newAssignment);
                 return;
             }
 
+            // If the requested screen already has a device assigned, replace the device
             if (node.nodeData.data.isAssigned)
             {
-                UnassignToBuffer(node.nodeData.data);
-                SetDevice(node.nodeData.data.position, icon.assignment);
-                node.nodeData.data.Load(icon.assignment);
+                //UnassignToBuffer(node.nodeData.data);
+                //Unassign(node.nodeData.data.controller);
+                SetAssignment(newAssignment.position, newAssignment);
                 return;
             }
 
+            // If the requested node is the center then first unassign everything else
             if (node.nodeType == NodeType.Primary)
             {
-                if (graph.GetNode(int2.one).nodeData.data.Matches(icon.assignment.controller))
-                    return;
-
                 if (hasAssignments)
                     UnassignAll();
 
-                SetDevice(int2.one, icon.assignment);
+                SetAssignment(int2.one, newAssignment);
                 return;
             }
 
+            // If an assignment exists in the center, use context as the position instead
             if(graph.GetNode(int2.one).nodeData.data.isAssigned)
             {
-                if (graph.GetNode(int2.one).nodeData.data.Matches(icon.assignment.controller))
-                {
+                if (graph.GetNode(int2.one).nodeData.data.Matches(newAssignment.controller))
                     return;
-                }
 
-                icon.assignment.position = icon.assignment.context;
-                icon.SetReassignmentStatus(true);
-
-                ShiftRadial(icon.assignment.position, true);
+                newAssignment.position = newAssignment.context;
+                //icon.SetReassignmentStatus(true);
+                ShiftRadial(newAssignment.position, true);
             }
             else
             {
                 if(node.nodeType == NodeType.Tertiary)
                 {
-                    ShiftRadial(icon.assignment.position, true);
+                    ShiftRadial(newAssignment.position, true);
                 }
                 else if(node.nodeType == NodeType.Secondary)
                 {
-                    ShiftLinear(icon.assignment.position);
+                    int neighbors = 0;
+
+                    if (node.neighborUp.IsPositive())
+                        if(graph.GetNode(node.neighborUp).nodeData.data.isAssigned)
+                            neighbors++;
+                    if (node.neighborRight.IsPositive())
+                        if (graph.GetNode(node.neighborRight).nodeData.data.isAssigned)
+                            neighbors++;
+                    if (node.neighborDown.IsPositive())
+                        if (graph.GetNode(node.neighborDown).nodeData.data.isAssigned)
+                            neighbors++;
+                    if (node.neighborLeft.IsPositive())
+                        if (graph.GetNode(node.neighborLeft).nodeData.data.isAssigned)
+                            neighbors++;
+
+                    if(neighbors > 1)
+                        ShiftRadial(newAssignment.position, true);
+                    else
+                        ShiftLinear(newAssignment.position);
                 }
             }
 
-            SetDevice(icon.assignment.position, icon.assignment);
-            // if graph has center assignment
-            // if center assignment is the same device
-            // // do nothing
-            // set position to context
+            SetAssignment(newAssignment.position, newAssignment);
         }
         private void UnassignAll()
         {
-
             foreach (Controller controller in ReInput.controllers.Controllers)
             {
                 if (controller.type == ControllerType.Mouse)
                     continue;
 
-                Unassign(controller);
+                Unassign(controller, true);
             }
         }
-        private void Unassign(Controller controller)
+        private void Unassign(Controller controller, bool simple = false)
         {
-            Log.LogDebug($" + GraphManager.Unassign BEGIN +");
             var data = graph.GetNodeData(true);
 
             for (int x = 0; x < data.Length; x++)
             {
                 for (int y = 0; y < data[x].Length; y++)
                 {
-                    //Log.LogDebug($"{data[x][y]}");
                     if (data[x][y].Matches(controller))
                     {
                         int2 position = data[x][y].position;
 
                         var node = graph.GetNode(position);
 
-                        if (node.nodeType == NodeType.Secondary)
+                        if (!simple)
                         {
-                            ShiftLinear(position, true);
-                        }
-                        else
-                        {
-                            ShiftRadial(position, false);
-                        }
-                        Log.LogDebug($"Unassigned '{controller}' from '{position}'");
-                        ClearDevice(position);
+                            if (node.nodeType == NodeType.Secondary)
+                            {
+                                ShiftLinear(position, true);
+                            }
+                            else
+                            {
+                                ShiftRadial(position, false);
+                            }
+                        }// For some reason some controllers aren't being assigned on initialization
+                        Log.LogDebug($"GraphManager.Unassign controller = '{controller.name}', position = '{position}', simple = '{true}'");
+                        ClearAssignment(position);
+
                         return;
                     }
                 }
             }
 
-            Log.LogDebug($" - GraphManager.Unassign END -");
             //graph.SetNodeData(data);
         }
         private void ShiftRadial(int2 origin, bool expand)
         {
-            Log.LogDebug($" ShiftRadial");
-            Node<Assignment> slot = graph.GetNode(origin);
+           var node = graph.GetNode(origin);
 
             if (expand)
             {
-                ShiftNeighbor(slot.neighborUp, slot.neighborUpShift);
-                ShiftNeighbor(slot.neighborRight, slot.neighborRightShift);
-                ShiftNeighbor(slot.neighborDown, slot.neighborDownShift);
-                ShiftNeighbor(slot.neighborLeft, slot.neighborLeftShift);
+                ShiftNeighbor(node.neighborUp, node.neighborUpShift);
+                ShiftNeighbor(node.neighborRight, node.neighborRightShift);
+                ShiftNeighbor(node.neighborDown, node.neighborDownShift);
+                ShiftNeighbor(node.neighborLeft, node.neighborLeftShift);
             }
             else
             {
-                ShiftNeighbor(slot.neighborUpShift, slot.neighborUp);
-                ShiftNeighbor(slot.neighborRightShift, slot.neighborRight);
-                ShiftNeighbor(slot.neighborDownShift, slot.neighborDown);
-                ShiftNeighbor(slot.neighborLeftShift, slot.neighborLeft);
+                int distantNeighbors = 0;
+
+                if (node.neighborUpShift.IsPositive())
+                    if (graph.GetNode(node.neighborUpShift).nodeData.data.isAssigned)
+                        distantNeighbors++;
+                if (node.neighborRightShift.IsPositive())
+                    if (graph.GetNode(node.neighborRightShift).nodeData.data.isAssigned)
+                        distantNeighbors++;
+                if (node.neighborDownShift.IsPositive())
+                    if (graph.GetNode(node.neighborDownShift).nodeData.data.isAssigned)
+                        distantNeighbors++;
+                if (node.neighborLeftShift.IsPositive())
+                    if (graph.GetNode(node.neighborLeftShift).nodeData.data.isAssigned)
+                        distantNeighbors++;
+
+                if (distantNeighbors > 1)
+                {
+                    if(node.nodeData.data.context.IsPositive())
+                    {
+                        if(node.neighborUp.Equals(node.nodeData.data.context))
+                            ShiftNeighbor(node.neighborUpShift, node.neighborUp);
+                        else if (node.neighborRight.Equals(node.nodeData.data.context))
+                            ShiftNeighbor(node.neighborRightShift, node.neighborRight);
+                        else if (node.neighborDown.Equals(node.nodeData.data.context))
+                            ShiftNeighbor(node.neighborDownShift, node.neighborDown);
+                        else if (node.neighborLeft.Equals(node.nodeData.data.context))
+                            ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
+                    }
+                }
+                else
+                {
+                    ShiftNeighbor(node.neighborUpShift, node.neighborUp);
+                    ShiftNeighbor(node.neighborRightShift, node.neighborRight);
+                    ShiftNeighbor(node.neighborDownShift, node.neighborDown);
+                    ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
+                }
             }
         }
         private void ShiftLinear(int2 origin, bool reverse = false)
         {
-            Log.LogDebug($" ShiftLinear");
             Direction direction = Direction.None;
 
             var node = graph.GetNode(origin);
 
             if(!HasNeighbor(node, Direction.Up))
-            {
                 direction = reverse ? Direction.Up : Direction.Down;
-            }
             else if (!HasNeighbor(node, Direction.Right))
-            {
-
                 direction = reverse ? Direction.Right : Direction.Left;
-            }
             else if (!HasNeighbor(node, Direction.Down))
-            {
-
                 direction = reverse ? Direction.Down : Direction.Up;
-            }
             else if (!HasNeighbor(node, Direction.Left))
-            {
-
                 direction = reverse ? Direction.Left : Direction.Right;
-            }
-
 
             if (direction == Direction.None)
                 return;
@@ -446,8 +561,7 @@ namespace XSplitScreen
                     {
                         int2 position = new int2(wX, wY);
 
-                        //if (graph.GetNode(position).nodeType != NodeType.Tertiary)
-                            ShiftNeighbor(position, position.Add(shiftDirection));
+                        ShiftNeighbor(position, position.Add(shiftDirection));
                     }
                 }
             }
@@ -459,8 +573,7 @@ namespace XSplitScreen
                     {
                         int2 position = new int2(hX, hY);
 
-                        //if (graph.GetNode(position).nodeType != NodeType.Tertiary)
-                            ShiftNeighbor(position, position.Add(shiftDirection));
+                        ShiftNeighbor(position, position.Add(shiftDirection));
                     }
                 }
             }
@@ -514,9 +627,9 @@ namespace XSplitScreen
                 }
                 else
                 {
-
-                    ClearDevice(origin);
+                    ClearAssignment(origin);
                 }
+                // Buffer here?
             }
         }
         private void ShiftDevice(int2 origin, int2 destination)
@@ -524,28 +637,25 @@ namespace XSplitScreen
             // TODO
             // issue with unassign
             // order of execution of change buffer?
+            var node = graph.GetNode(origin);
 
-            SetDevice(destination, graph.GetNode(origin).nodeData.data);
-            graph.GetNode(origin).nodeData.data.ClearAssignmentData();
+            SetAssignment(destination, node.nodeData.data);
+            node.nodeData.data.ClearAssignment();
 
             //ClearDevice(origin);
         }
-        private void ClearDevice(int2 position)
+        private void ClearAssignment(int2 position)
         {
             var node = graph.GetNode(position);
+            node.nodeData.data.ClearAssignment();
 
-            if(node == null)// (!node.nodeData.data.isAssigned)
-                return;
-
-            UnassignToBuffer(node.nodeData.data);
-
-            node.nodeData.data.ClearAssignmentData();
+            //UnassignToBuffer(node.nodeData.data);
         }
-        private void SetDevice(int2 position, Assignment assignment)
+        private void SetAssignment(int2 position, Assignment assignment)
         {
             var node = graph.GetNode(position);
             node.nodeData.data.Load(assignment);
-            AssignToBuffer(node.nodeData.data);
+            //AssignToBuffer(node.nodeData.data);
         }
         private void UnassignToBuffer(Assignment assignment)
         {
@@ -635,7 +745,12 @@ namespace XSplitScreen
         #region Coroutines
         public IEnumerator IconMonitor(Icon icon)
         {
+            Assignment potentialAssignment = icon.assignment;
+
             Vector3 workingVector = Vector3.zero;
+
+            int2 previousPosition = int2.negative;
+            int2 previousContext = potentialAssignment.context;
 
             IconEvent onPotentialAssignment = new IconEvent();
 
@@ -655,9 +770,6 @@ namespace XSplitScreen
 
                 bool outOfRange = true;
 
-                int2 previousPosition = icon.assignment.position;
-                int2 previousContext = icon.assignment.context;
-
                 foreach (Screen screen in instance.display.screens)
                 {
                     workingVector = icon.cursorFollower.targetPosition - screen.transform.position;
@@ -669,7 +781,7 @@ namespace XSplitScreen
                         if(currentScreenDistance < screenDistance)
                         {
                             screenDistance = currentScreenDistance;
-                            icon.assignment.position = screen.position;
+                            potentialAssignment.position = screen.position;
 
                             //closestScreen = screen.position;
                         }
@@ -682,34 +794,34 @@ namespace XSplitScreen
                         if (currentScreenDistance < contextDistance)
                         {
                             contextDistance = currentScreenDistance;
-                            icon.assignment.context = screen.position;
+                            potentialAssignment.context = screen.position;
                         }
                     }
                 }
 
                 if(outOfRange)
                 {
-                    icon.assignment.position = int2.negative;
-                    icon.assignment.context = int2.negative;
+                    potentialAssignment.position = int2.negative;
+                    potentialAssignment.context = int2.negative;
                 }
 
-                if((!previousPosition.Equals(icon.assignment.position) || !previousContext.Equals(icon.assignment.context)))
+                if((!previousPosition.Equals(potentialAssignment.position) || !previousContext.Equals(potentialAssignment.context)))
                 {
-                    if(icon.assignment.position.IsPositive())
+                    if(potentialAssignment.position.IsPositive())
                     {
                         bool didAssignment = false;
 
                         if (!icon.potentialReassignment)
                         {
                             didAssignment = true;
-                            onPotentialAssignment.Invoke(icon);
+                            onPotentialAssignment.Invoke(icon, potentialAssignment);
                         }
                         else
                         {
-                            if(!previousContext.Equals(icon.assignment.context))
+                            if(!previousContext.Equals(potentialAssignment.context))
                             {
                                 didAssignment = true;
-                                onPotentialAssignment.Invoke(icon);
+                                onPotentialAssignment.Invoke(icon, potentialAssignment);
                             }
                         }
 
@@ -721,8 +833,11 @@ namespace XSplitScreen
                     else
                     {
                         icon.SetReassignmentStatus(false);
-                        onPotentialAssignment.Invoke(icon);
+                        onPotentialAssignment.Invoke(icon, potentialAssignment);
                     }
+
+                    previousPosition = potentialAssignment.position;
+                    previousContext = potentialAssignment.context;
                 }
 
                 yield return null;
@@ -846,7 +961,7 @@ namespace XSplitScreen
             #region UI
             public void OnGraphUpdated()
             {
-                var data = instance.graph.GetGraph();
+                var data = instance.graph.GetNodeData(true);
 
                 foreach (Icon icon in ControllerIconManager.instance.icons)
                 {
@@ -865,18 +980,18 @@ namespace XSplitScreen
                 {
                     for (int y = 0; y < data[x].Length; y++)
                     {
-                        if(data[x][y].nodeData.data.isAssigned)
+                        if(data[x][y].isAssigned)
                         {
                             foreach (Icon icon in ControllerIconManager.instance.icons)
                             {
-                                if (!icon.assignment.isAssigned)
-                                    continue;
+                                //if (!icon.assignment.isAssigned)
+                                //    continue;
 
-                                if(data[x][y].nodeData.data.Matches(icon.assignment.controller))
+                                if(data[x][y].Matches(icon.assignment.controller))
                                 {
                                     foreach (Screen screen in screens)
                                     {
-                                        if (screen.position.Equals(data[x][y].nodeData.data.position))
+                                        if (screen.position.Equals(data[x][y].position))
                                         {
                                             if(!icon.displayFollower.gameObject.activeSelf)
                                             {
@@ -892,30 +1007,32 @@ namespace XSplitScreen
                                 }
                             }
 
-                            if(data[x][y].nodeType == NodeType.Secondary)
+                            var node = instance.graph.GetNode(data[x][y].position);
+
+                            if (node.nodeType == NodeType.Secondary)
                             {
-                                if(!data[x][y].neighborUp.IsPositive())
+                                if(!instance.graph.GetNode(data[x][y].position).neighborUp.IsPositive())
                                 {
                                     dividerEnabled[1] = true;
                                     dividerEnabled[3] = true;
                                 }
-                                if (!data[x][y].neighborRight.IsPositive())
+                                if (!node.neighborRight.IsPositive())
                                 {
                                     dividerEnabled[0] = true;
                                     dividerEnabled[2] = true;
                                 }
-                                if (!data[x][y].neighborDown.IsPositive())
+                                if (!node.neighborDown.IsPositive())
                                 {
                                     dividerEnabled[1] = true;
                                     dividerEnabled[3] = true;
                                 }
-                                if (!data[x][y].neighborLeft.IsPositive())
+                                if (!node.neighborLeft.IsPositive())
                                 {
                                     dividerEnabled[0] = true;
                                     dividerEnabled[2] = true;
                                 }
                             }
-                            else if(data[x][y].nodeType == NodeType.Tertiary)
+                            else if(node.nodeType == NodeType.Tertiary)
                             {
                                 if (x == 0)
                                 {
