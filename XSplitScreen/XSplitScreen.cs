@@ -137,8 +137,11 @@ namespace XSplitScreen
             TogglePersistentHooks(false);
             ToggleUIHooks(false);
 
-            Destroy(titleButton?.gameObject);
-            Destroy(menuContainer?.gameObject);
+            if(titleButton != null)
+                Destroy(titleButton?.gameObject);
+
+            if(menuContainer != null)
+                Destroy(menuContainer?.gameObject);
         }
         #endregion
 
@@ -277,8 +280,16 @@ namespace XSplitScreen
             #region Variables
             // OnConfiguration event
             // Create the menu during ToggleUI
-            public AssignmentEvent onAssignmentUpdate { get; private set; }
+            //public AssignmentEvent onAssignmentLoaded { get; private set; }
+            //public AssignmentEvent onAssignmentUnloaded { get; private set; }
+            //public AssignmentEvent onAssignmentUpdate { get; private set; }
+            public UnityEvent onConfigurationUpdated { get; private set; }
+
+            public Action<ControllerStatusChangedEventArgs> onControllerConnected;
+            public Action<ControllerStatusChangedEventArgs> onControllerDisconnected;
+
             public List<Assignment> assignments { get; private set; } // TODO private
+            public List<Controller> controllers { get; private set; }
 
             public int2 graphDimensions { get; private set; }
 
@@ -290,6 +301,10 @@ namespace XSplitScreen
 
             private ConfigEntry<string> preferencesConfig;
             private ConfigEntry<bool> enabledConfig;
+            private ConfigEntry<bool> autoKeyboardConfig;
+            private ConfigEntry<int> playerCountConfig;
+
+            private const int maxLocalPlayers = 4;
             #endregion
 
             #region Initialization & Exit
@@ -302,12 +317,19 @@ namespace XSplitScreen
             private void InitializeReferences()
             {
                 assignments = new List<Assignment>();
+                controllers = new List<Controller>();
+
                 preferences = new List<Preference>();
 
-                onAssignmentUpdate = new AssignmentEvent();
+                onConfigurationUpdated = new UnityEvent();
+                //onAssignmentLoaded = new AssignmentEvent();
+                //onAssignmentUnloaded = new AssignmentEvent();
+                //onAssignmentUpdate = new AssignmentEvent();
+
                 graphDimensions = new int2(3, 3);
 
                 ToggleListeners(true);
+                UpdateActiveControllers();
             }
             private void LoadConfigFile(ConfigFile configFile)
             {
@@ -315,8 +337,10 @@ namespace XSplitScreen
 
                 try
                 {
-                    preferencesConfig = configFile.Bind<string>("General", "Assignments", "", "Persistent assignments");
-                    enabledConfig = configFile.Bind<bool>("General", "Enabled", false, "Should the program start on launch");
+                    preferencesConfig = configFile.Bind<string>("General", "Assignments", "", "Changes may break the mod!");
+                    enabledConfig = configFile.Bind<bool>("General", "Enabled", false, "Should splitscreen automatically enable based on available controllers?");
+                    autoKeyboardConfig = configFile.Bind<bool>("General", "UseKeyboard", true, "Automatically enable splitscreen using the keyboard?");
+                    playerCountConfig = configFile.Bind<int>("General", "PlayerCount", 1, "Number of local players");
                 }
                 catch(Exception e)
                 {
@@ -329,20 +353,20 @@ namespace XSplitScreen
                     {
                         Wrapper wrapper = JsonUtility.FromJson<Wrapper>(preferencesConfig.Value);
 
-                        for(int e = 0; e < wrapper.deviceId.Length; e++)
+                        for(int e = 0; e < wrapper.displayId.Length; e++)
                         {
                             preferences.Add(new Preference()
                             {
-                                deviceId = wrapper.deviceId[e],
-                                displayId = wrapper.displayId[e],
-                                profile = wrapper.profile[e],
                                 position = new int2(wrapper.positionX[e], wrapper.positionY[e]),
                                 context = new int2(wrapper.contextX[e], wrapper.contextY[e]),
-                                isKeyboard = wrapper.isKeyboard[e],
+                                displayId = wrapper.displayId[e],
+                                playerId = wrapper.playerId[e],
+                                profileId = wrapper.profileId[e],
+                                color = new Color(wrapper.colorR[e], wrapper.colorG[e], wrapper.colorB[e], wrapper.colorA[e]),
                             });
                         }
 
-                        Log.LogInfo($"Loaded {wrapper.deviceId.Length} preferences");
+                        Log.LogInfo($"Loaded {wrapper.displayId.Length} preferences");
                     }
                     catch(Exception e)
                     {
@@ -356,20 +380,52 @@ namespace XSplitScreen
             }
             private void InitializeAssignments()
             {
-                // Preferences should save the player id
-                // Player id should be drag & drop
-                // Controllers must be auto assigned or manually assigned during customization and do not change the splitscreen configuration
+                Controller[] availableControllers = controllers.Where(c => autoKeyboardConfig.Value ? true : c.type != ControllerType.Keyboard).ToArray();
 
-
-                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.autoAssignJoysticks = {ReInput.configuration.autoAssignJoysticks}");
-                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.maxJoysticksPerPlayer = {ReInput.configuration.maxJoysticksPerPlayer}");
-                Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration.reassignJoystickToPreviousOwnerOnReconnect = {ReInput.configuration.reassignJoystickToPreviousOwnerOnReconnect}");
-                //Log.LogDebug($"Configuration.InitializeAssignments ReInput.configuration. = {ReInput.controllers.}");
-
-                foreach (Controller controller in ReInput.controllers.Controllers)
+                if(preferences.Count == 0)
                 {
-                    Log.LogDebug($"Configuration.InitializeAssignments controller.hardwareTypeGuid: {controller.hardwareTypeGuid}");
-                    LoadAssignment(controller);
+                    Log.LogDebug($"Creating preferences..");
+
+                    for(int e = 0; e < maxLocalPlayers; e++)
+                    {
+                        if(e == 0)
+                        {
+                            preferences.Add(new Preference()
+                            {
+                                position = int2.one,
+                                context = new int2(1, 0),
+                                displayId = 0,
+                                playerId = 0,
+                                profileId = 0,
+                                color = ColorCatalog.GetMultiplayerColor(e)
+                            });
+                        }
+                        else
+                        {
+                            preferences.Add(new Preference()
+                            {
+                                position = int2.negative,
+                                context = int2.negative,
+                                displayId = -1,
+                                playerId = e,
+                                profileId = -1,
+                                color = ColorCatalog.GetMultiplayerColor(e)
+                            });
+                        }
+                    }
+                }
+
+                for (int preferenceId = 0; preferenceId < preferences.Count; preferenceId++)
+                {
+                    if(preferenceId < availableControllers.Length) // If controllers are available
+                    {
+                        LoadAssignment(preferenceId, availableControllers[preferenceId]);
+                    }
+                    else
+                    {
+                        Log.LogDebug($"Unable to find controller for preference id '{preferenceId}'");
+                        LoadAssignment(preferenceId, null);
+                    }
                 }
             }
             public void Destroy()
@@ -396,69 +452,100 @@ namespace XSplitScreen
             }
             public void OnControllerConnected(Rewired.ControllerStatusChangedEventArgs args)
             {
-                if (args.controller.type == ControllerType.Mouse)
+                if (args.controllerType == ControllerType.Mouse)
                     return;
 
-                LoadAssignment(args.controller);
+                UpdateActiveControllers();
+                onControllerConnected.Invoke(args);
+
+                foreach(Assignment assignment in assignments)
+                {
+                    if (assignment.controller is null)
+                    {
+                        assignment.Load(args.controller);
+                        return;
+                    }
+                }
             }
             public void OnControllerDisconnected(Rewired.ControllerStatusChangedEventArgs args)
             {
-                int index = -1;
+                if (args.controllerType == ControllerType.Mouse)
+                    return;
 
-                for(int e = 0; e < assignments.Count; e++)
+                UpdateActiveControllers();
+                Log.LogDebug($"OnControllerDisconnected args: {args != null}");
+                onControllerDisconnected.Invoke(args);
+            }
+            #endregion
+
+            #region Controllers
+            public Assignment? GetAssignment(Controller controller)
+            {
+                foreach(Assignment assignment in assignments)
                 {
-                    if(assignments[e].deviceId == args.controllerId && assignments[e].isKeyboard == (args.controllerType == ControllerType.Keyboard))
-                    {
-                        index = e;
-                        break;
-                    }
+                    if (assignment.HasController(controller))
+                        return assignment;
                 }
 
-                if (index > -1)
+                return null;
+            }
+            public bool IsAssigned(Controller controller)
+            {
+                foreach (Assignment assignment in assignments)
                 {
-                    Assignment oldAssignment = assignments[index];
-
-                    assignments.RemoveAt(index);
-
-                    onAssignmentUpdate.Invoke(null, oldAssignment);
+                    if (assignment.HasController(controller))
+                        return true;
                 }
+
+                return false;
+            }
+            private void UpdateActiveControllers()
+            {
+                controllers = ReInput.controllers.Controllers.Where(c => c.type != ControllerType.Mouse).ToList();
             }
             #endregion
 
             #region Assignments
-            private void LoadAssignment(Controller controller)
+            private void LoadAssignment(int preferenceId, Controller controller)
             {
-                if (controller.type == ControllerType.Mouse)
-                    return;
+                Assignment newAssignment = new Assignment(controller);
 
-                Assignment assignment = GetPreference(controller);
+                newAssignment.Load(preferences[preferenceId]);
 
-                assignments.Add(assignment);
+                assignments.Add(newAssignment);
 
-                onAssignmentUpdate.Invoke(controller, assignment);
+                //onAssignmentLoaded.Invoke(controller, newAssignment);++
+
+                //Assignment assignment = GetPreference(controller);
+
+                //activeAssignments.Add(assignment);
+
+                //onAssignmentUpdate.Invoke(controller, assignment);
             }
-            public void PushChanges(List<Assignment> changes)
+            public bool PushChanges(List<Assignment> changes)
             {
                 var readOnly = changes.ToArray();
 
-                int counter = 0;
+                if (readOnly.Length != assignments.Count)
+                    return false;
 
                 foreach (Assignment change in readOnly)
                 {
                     for(int e = 0; e < assignments.Count; e++)
                     {
-                        if(assignments[e].Matches(change.controller))
-                        {
-                            assignments[e] = change;
-                            counter++;
-                            onAssignmentUpdate.Invoke(change.controller, change);
-                        }
+                        assignments[e] = change;
                     }
                 }
 
-                Save();
+                if (Save())
+                {
+                    onConfigurationUpdated.Invoke();
+                    return true;
+                }
+                else
+                    return false;
             }
-            public void Save()
+            public bool Save()
             {
                 try
                 {
@@ -467,10 +554,12 @@ namespace XSplitScreen
                     enabledConfig.Value = enabled;
                     preferencesConfig.Value = JsonUtility.ToJson(wrapper);
                     config.Save();
+                    return true;
                 }
                 catch(Exception e)
                 {
                     Log.LogError(e);
+                    return false;
                 }
 
             }
@@ -478,6 +567,7 @@ namespace XSplitScreen
             #region Helpers
             private Assignment GetPreference(Controller controller)
             {
+                /*
                 Assignment newAssignment = new Assignment(controller);
 
                 bool foundPreference = false;
@@ -506,9 +596,12 @@ namespace XSplitScreen
                 }
 
                 return newAssignment;
+                */
+                return new Assignment();
             }
             private void CreatePreference(Controller controller)
             {
+                /*
                 Preference newPreference = new Preference()
                 {
                     deviceId = controller.id,
@@ -530,6 +623,7 @@ namespace XSplitScreen
                 preferences.Add(newPreference);
 
                 Log.LogMessage($"Created new preference for '{controller.name}'");
+                */
             }
             private void UpdatePreferences()
             {
@@ -539,9 +633,10 @@ namespace XSplitScreen
                     {
                         if(assignment.Matches(preferences[e]))
                         {
-                            var newPreference = preferences[e];
-                            newPreference.Update(assignment);
-                            preferences[e] = newPreference;
+                            preferences[e].Update(assignment);
+                            //var newPreference = preferences[e];
+                            //newPreference.Update(assignment);
+                            //preferences[e] = newPreference;
                             break;
                         }
                     }
@@ -554,38 +649,56 @@ namespace XSplitScreen
             [System.Serializable]
             private class Wrapper
             {
-                public bool[] isKeyboard;
+                //public bool[] isKeyboard;
 
-                public string[] profile;
+                //public string[] profile;
 
-                public int[] deviceId;
-                public int[] displayId;
+                //public int[] deviceId;
                 public int[] positionX;
                 public int[] positionY;
                 public int[] contextX;
                 public int[] contextY;
+                public int[] displayId;
+                public int[] playerId;
+                public int[] profileId;
+                public float[] colorR;
+                public float[] colorG;
+                public float[] colorB;
+                public float[] colorA;
 
                 public Wrapper(List<Preference> preferences)
                 {
-                    isKeyboard = new bool[preferences.Count];
-                    profile = new string[preferences.Count];
-                    deviceId = new int[preferences.Count];
-                    displayId = new int[preferences.Count];
+                    //isKeyboard = new bool[preferences.Count];
+                    //profile = new string[preferences.Count];
+                    //deviceId = new int[preferences.Count];
                     positionX = new int[preferences.Count];
                     positionY = new int[preferences.Count];
                     contextX = new int[preferences.Count];
                     contextY = new int[preferences.Count];
+                    displayId = new int[preferences.Count];
+                    playerId = new int[preferences.Count];
+                    profileId = new int[preferences.Count];
+                    colorR = new float[preferences.Count];
+                    colorG = new float[preferences.Count];
+                    colorB = new float[preferences.Count];
+                    colorA = new float[preferences.Count];
 
                     for (int e = 0; e < preferences.Count; e++)
                     {
-                        isKeyboard[e] = preferences[e].isKeyboard;
-                        profile[e] = preferences[e].profile;
-                        deviceId[e] = preferences[e].deviceId;
-                        displayId[e] = preferences[e].displayId;
+                        //isKeyboard[e] = preferences[e].isKeyboard;
+                        //profile[e] = preferences[e].profile;
+                        //deviceId[e] = preferences[e].deviceId;
                         positionX[e] = preferences[e].position.x;
                         positionY[e] = preferences[e].position.y;
                         contextX[e] = preferences[e].context.x;
                         contextY[e] = preferences[e].context.y;
+                        displayId[e] = preferences[e].displayId;
+                        playerId[e] = preferences[e].playerId;
+                        profileId[e] = preferences[e].profileId;
+                        colorR[e] = preferences[e].color.r;
+                        colorG[e] = preferences[e].color.g;
+                        colorB[e] = preferences[e].color.b;
+                        colorA[e] = preferences[e].color.a;
                     }
                 }
             }
@@ -593,55 +706,72 @@ namespace XSplitScreen
         }
         public struct Preference
         {
+            public Color color;
+
             public int2 position;
             public int2 context;
 
-            public int deviceId;
             public int displayId;
+            public int playerId;
+            public int profileId;
 
-            public string profile;
-
-            public bool isKeyboard;
-
+            public Preference(int playerId)
+            {
+                position = int2.negative;
+                context = int2.negative;
+                displayId = -1;
+                profileId = -1;
+                this.playerId = playerId;
+                color = Color.white;
+            }
             public override string ToString()
             {
-                string newFormat = "Preference(deviceId = '{0}', isKeyboard = '{1}', displayId = '{2}', position = '{3}', context = '{4})";
+                string newFormat = "Preference(position = '{0}', context = '{1}', displayId = '{2}', playerId = '{3}', profileId = '{4}', color = '{5}')";
 
-                return string.Format(newFormat, deviceId, isKeyboard, displayId, position, context);
+                return string.Format(newFormat, position, context, displayId, playerId, profileId, color);
             }
-            public bool Matches(Controller controller)
+            public bool Matches(Preference preference)
             {
-                return controller.id == deviceId && isKeyboard == (controller.type == ControllerType.Keyboard);
+                return preference.playerId == this.playerId;
             }
             public void Update(Assignment assignment)
             {
                 position = assignment.position;
                 context = assignment.context;
-                deviceId = assignment.deviceId;
+                //deviceId = assignment.deviceId;
                 displayId = assignment.displayId;
-                profile = assignment.profile;
-                isKeyboard = assignment.isKeyboard;
+                playerId = assignment.playerId;
+                profileId = assignment.profileId;
+                color = assignment.color;
+                //profile = assignment.profile;
+                //isKeyboard = assignment.isKeyboard;
             }
         }
         public struct Assignment
         {
-            public Controller controller;
+            public Controller controller; // Group: Assignment
 
-            public int2 position; // The assigned screen
-            public int2 context; // Which side of the screen the player intended the assignment to be on
+            public Color color; // Group: Assignment
 
-            public string profile;
+            public int2 position;  // Group: Screen
+            public int2 context;  // Group: Assignment
 
-            public int displayId; // The desired monitor
+            //public string profile;
 
-            public Assignment(Controller controller = null)
+            public int displayId;  // Group: Display
+            public int playerId; // Group: Assignment
+            public int profileId; // Group: Assignment
+
+            public Assignment(Controller controller)
             {
                 this.controller = controller;
 
                 position = int2.negative;
                 context = int2.negative;
                 displayId = -1;
-                profile = "";
+                playerId = -1;
+                profileId = -1;
+                color = Color.white;
             }
             public int deviceId
             {
@@ -657,10 +787,7 @@ namespace XSplitScreen
             {
                 get
                 {
-                    if (controller == null)
-                        return false;
-
-                    return position.IsPositive();
+                    return playerId > -1;
                 }
             }
             public bool isKeyboard
@@ -677,55 +804,64 @@ namespace XSplitScreen
             }
             public override string ToString()
             {
-                string newFormat = "Assignment(deviceId = '{0}', isKeyboard = '{1}', displayId = '{2}', position = '{3}', context = '{4}, has controller = '{5}')";
-
-                return string.Format(newFormat, deviceId, isKeyboard, displayId, position, context, controller != null);
+                return $"Assignment(position = '{position}', playerId = '{playerId}', controller = '{controller != null}')";
             }
             public bool Matches(Preference preference)
             {
-                return preference.deviceId == deviceId && preference.isKeyboard == isKeyboard;
+                return this.playerId == preference.playerId;
             }
             public bool Matches(Assignment assignment)
             {
-                return assignment.deviceId == deviceId && assignment.isKeyboard == isKeyboard;
+                return this.playerId == assignment.playerId;
             }
-            public bool Matches(Controller controller)
+            public bool HasController(Controller controller)
             {
-                if (this.controller == null)
+                if (this.controller is null)
                     return false;
 
-                return this.controller.id == controller.id && this.controller.type == controller.type;
+                return this.controller.Equals(controller); //this.controller.id == controller.id && this.controller.type == controller.type;
             }
             public void Load(Preference preference)
             {
                 position = preference.position;
-                context = preference.context;
-                profile = preference.profile;
                 displayId = preference.displayId;
+                playerId = preference.playerId;
+                profileId = preference.profileId;
+                color = preference.color;
             }
             public void Load(Assignment assignment)
             {
                 this.controller = assignment.controller;
-                profile = assignment.profile;
-                context = assignment.context;
+                displayId = assignment.displayId;
+                playerId = assignment.playerId;
+                profileId = assignment.profileId;
+                color = assignment.color;
             }
-            public void ClearAssignment()
+            public void Load(Controller controller)
+            {
+                this.controller = controller;
+            }
+            public void ResetAssignment()
             {
                 this.controller = null;
-                profile = "";
                 context = int2.negative;
+                playerId = -1;
+                profileId = -1;
+                color = Color.white;
             }
-            public void ClearScreen()
+            public void ResetScreen()
             {
                 position = int2.negative;
-                context = int2.negative;
+                //context = int2.negative; // Last known change
             }
-            public void Initialize()
+            public void Reset()
             {
-                controller = null;
-                ClearScreen();
+                ResetScreen();
+                ResetAssignment();
                 displayId = -1;
-                profile = "";
+                playerId = -1;
+                profileId = -1;
+                color = Color.white;
             }
         }
         public struct Language

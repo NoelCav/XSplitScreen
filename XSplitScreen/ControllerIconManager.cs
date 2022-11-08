@@ -123,54 +123,58 @@ namespace XSplitScreen
         }
         private void InitializeIcons()
         {
-            foreach(Assignment assignment in configuration.assignments)
+            foreach(Controller controller in configuration.controllers)
             {
-                CreateIcon(assignment);
+                CreateIcon(controller);
             }
         }
         private void ToggleListeners(bool status)
         {
             if(status)
             {
-                configuration.onAssignmentUpdate.AddListener(OnAssignmentUpdated);
+                configuration.onControllerConnected += OnControllerConnected;
+                configuration.onControllerDisconnected += OnControllerDisconnected;
+                configuration.onConfigurationUpdated.AddListener(OnConfigurationUpdated);
             }
             else
             {
-                configuration.onAssignmentUpdate.RemoveListener(OnAssignmentUpdated);
+                configuration.onControllerConnected -= OnControllerConnected;
+                configuration.onControllerDisconnected -= OnControllerDisconnected;
+                configuration.onConfigurationUpdated.RemoveListener(OnConfigurationUpdated);
             }
         }
         #endregion
 
         #region Icons
-        public void OnAssignmentUpdated(Controller controller, Assignment assignment)
+        public void OnConfigurationUpdated()
         {
-            bool createIcon = true;
+            foreach(Icon icon in icons)
+            {
+                icon.UpdateStatus();
+            }
+        }
+        public void OnControllerConnected(ControllerStatusChangedEventArgs args)
+        {
+            CreateIcon(args.controller);
+        }
+        public void OnControllerDisconnected(ControllerStatusChangedEventArgs args)
+        {
+            int index = -1;
 
             for (int e = 0; e < icons.Count; e++)
             {
-                if (icons[e].assignment.Matches(assignment))
+                if (!icons[e].controller.isConnected)
                 {
-                    if (controller == null)
-                    {
-                        onIconRemoved.Invoke(icons[e], assignment);
-                        Destroy(icons[e].gameObject);
-                        icons.RemoveAt(e);
-                    }
-                    else
-                    {
-                        icons[e].UpdateAssignment(assignment);
-                    }
-
-                    createIcon = false;
-
+                    index = e;
                     break;
                 }
             }
 
-            if (createIcon)
-                CreateIcon(assignment);
-
-            //GraphManager.instance.ReloadGraph();
+            if (index > -1)
+            {
+                Destroy(icons[index].gameObject);
+                icons.RemoveAt(index);
+            }
         }
         public Sprite GetDeviceSprite(Controller controller)
         {
@@ -187,47 +191,48 @@ namespace XSplitScreen
 
             return sprite;
         }
-        
-        private void CreateIcon(Assignment assignment)
+        public Icon GetIcon(Controller controller)
+        {
+            if (controller is null)
+                return null;
+
+            foreach(Icon icon in icons)
+            {
+                if (icon.controller.Equals(controller))
+                    return icon;
+            }
+
+            return null;
+        }
+        private void CreateIcon(Controller controller)
         {
             Icon icon = Instantiate(iconPrefab).GetComponent<Icon>();
 
-            icon.name = $"(Icon) {assignment.controller.name}";
-            icon.assignment = assignment;
+            icon.name = $"(Icon) {controller.name}";
+            //icon.assignment = assignment;
             icon.transform.SetParent(iconContainer);
+            icon.transform.position = new Vector3(Screen.width, icons.Count > 0 ? icons[icons.Count - 1].transform.position.y : Screen.height, 0);
+            icon.Initialize(controller, followerContainer);
 
-            icon.Initialize(followerContainer);
             icon.onStartDragIcon.AddListener(OnStartDragIcon);
             icon.onStopDragIcon.AddListener(OnStopDragIcon);
 
-            UpdateIconDeviceSprite(icon);
+            //UpdateIconDeviceSprite(icon);
 
             icon.gameObject.SetActive(true);
-
             icons.Add(icon);
-            onIconAdded.Invoke(icon, assignment);
-        }
-        private void UpdateIconDeviceSprite(Icon icon)
-        {
-            icon.deviceImage.sprite = GetDeviceSprite(icon.assignment.controller);
-            icon.deviceImage.SetNativeSize();
-
-            icon.displayImage.sprite = icon.deviceImage.sprite;
-            icon.displayImage.SetNativeSize();
-
-            icon.statusImage.sprite = sprite_Checkmark;
-            icon.statusImage.SetNativeSize();
+            //onIconAdded.Invoke(icon, assignment);
         }
         #endregion
 
         #region Events
-        public void OnStartDragIcon(Icon icon, Assignment assignment)
+        public void OnStartDragIcon(Icon icon)
         {
-            onStartDragIcon.Invoke(icon, assignment);
+            onStartDragIcon.Invoke(icon);
         }
-        public void OnStopDragIcon(Icon icon, Assignment assignment)
+        public void OnStopDragIcon(Icon icon)
         {
-            onStopDragIcon.Invoke(icon, assignment);
+            onStopDragIcon.Invoke(icon);
         }
         #endregion
 
@@ -235,7 +240,7 @@ namespace XSplitScreen
         public class Icon : MonoBehaviour
         {
             #region Variables
-            private static readonly Color normalColor = new Vector4(1, 1 , 1, 0.4f);
+            private static readonly Color normalColor = new Vector4(1, 1, 1, 0.4f);
             private static readonly Color buttonPressColor = new Vector4(1, 1, 1, 1f);
 
             private static readonly float normalAlpha = 0.4f;
@@ -248,7 +253,9 @@ namespace XSplitScreen
 
             public Coroutine iconMonitorCoroutine;
 
-            public Assignment assignment;
+            public Controller controller;
+
+            //public Assignment assignment;
 
             public Image deviceImage;
             public Image statusImage;
@@ -264,6 +271,7 @@ namespace XSplitScreen
             public IconEvent onStartDragIcon { get; private set; }
             public IconEvent onStopDragIcon { get; private set; }
 
+            public bool isAssigned => configuration.IsAssigned(controller);
             public bool potentialReassignment = false;
             public bool showStatusImage = false;
             public bool hasTemporaryAssignment = false;
@@ -277,7 +285,10 @@ namespace XSplitScreen
             #region Unity Methods
             public void Update()
             {
-                if(assignment.controller.GetAnyButton())
+                if (controller is null)
+                    return;
+
+                if(controller.GetAnyButton())
                 {
                     targetColor.w = buttonPressAlpha;
                     activityTimer = activityTimeout;
@@ -310,7 +321,7 @@ namespace XSplitScreen
             }
             public void OnDestroy()
             {
-                Log.LogDebug($"{name} destroying");
+                Log.LogDebug($"Destroying '{name}'");
                 Destroy(displayFollower.gameObject);
                 Destroy(iconFollower.gameObject);
                 Destroy(cursorFollower.gameObject);
@@ -318,18 +329,18 @@ namespace XSplitScreen
             #endregion
 
             #region Initialization & Exit
-            public void Initialize(RectTransform followerContainer)
+            public void Initialize(Controller controller, RectTransform followerContainer) // Much of this should occur on creation of the prefab, not icon
             {
                 onStartDragIcon = new IconEvent();
                 onStopDragIcon = new IconEvent();
 
+                this.controller = controller;
                 // TODO organize
-                displayFollower = new GameObject($"(Display Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
+                displayFollower = new GameObject($"(Display Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 displayFollower.transform.SetParent(followerContainer);
-                displayFollower.transform.localScale = Vector3.one * 0.3f;
+                displayFollower.transform.localScale = Vector3.one * 0.18f;
                 displayFollower.movementSpeed = iconFollowerSpeed;
                 displayFollower.smoothMovement = true;
-
                 displayImage = displayFollower.GetComponent<Image>();
                 displayImage.color = targetColor;
 
@@ -342,13 +353,16 @@ namespace XSplitScreen
                 displayButton.onHoverStart.AddListener(OnHoverStart);
                 displayButton.onHoverStop.AddListener(OnHoverStop);
 
-                iconFollower = new GameObject($"(Icon Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
+                iconFollower = new GameObject($"(Icon Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 iconFollower.transform.SetParent(followerContainer);
                 iconFollower.transform.localScale = Vector3.one * 0.3f;
                 iconFollower.target = gameObject.GetComponent<RectTransform>();
                 iconFollower.movementSpeed = iconFollowerSpeed;
                 iconFollower.destroyOnTargetLost = true;
                 iconFollower.smoothMovement = true;
+                //iconFollower.transform.localPosition = new Vector3(Screen.width / 2f, Screen.height / 2f, 0);
+                
+                Log.LogDebug($"Icon.Initialize setting iconFollower position to '{iconFollower.transform.localPosition}'");
 
                 button = iconFollower.GetComponent<XButton>();
                 button.allowAllEventSystems = true;
@@ -361,6 +375,7 @@ namespace XSplitScreen
                 GameObject statusObject = new GameObject("(Image) Status", typeof(RectTransform));
                 statusObject.transform.SetParent(iconFollower.transform);
                 statusObject.transform.localScale = Vector3.one;
+                statusObject.transform.localPosition = Vector3.zero;
 
                 deviceImage = iconFollower.GetComponent<Image>();
                 deviceImage.color = targetColor;
@@ -369,9 +384,9 @@ namespace XSplitScreen
                 statusImage.raycastTarget = false;
                 statusImage.color = Color.clear;
 
-                cursorFollower = new GameObject($"(Cursor Follower) {assignment.controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
+                cursorFollower = new GameObject($"(Cursor Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 cursorFollower.transform.SetParent(followerContainer);
-                cursorFollower.transform.localScale = Vector3.one * 0.4f;
+                cursorFollower.transform.localScale = Vector3.one * 0.24f;
                 cursorFollower.shouldFollowMouse = true;
                 cursorFollower.movementSpeed = cursorFollowerSpeed;
                 cursorFollower.destroyOnTargetLost = true;
@@ -390,7 +405,16 @@ namespace XSplitScreen
 
                 targetColor.w = 1;
 
-                UpdateAssignment(assignment);
+                deviceImage.sprite = instance.GetDeviceSprite(controller);
+                deviceImage.SetNativeSize();
+
+                displayImage.sprite = deviceImage.sprite;
+                displayImage.SetNativeSize();
+
+                cursorImage.sprite = deviceImage.sprite;
+                cursorImage.SetNativeSize();
+
+                UpdateStatus();
             }
             #endregion
 
@@ -401,45 +425,67 @@ namespace XSplitScreen
 
                 displayImage.raycastTarget = !status;
 
-                if (!assignment.isAssigned)
+                if (!isAssigned)
                     displayImage.raycastTarget = false;
-
-                // some kind of bug causing context changing? or something? idk
             }
             public void UpdateDisplayFollower(RectTransform target)
             {
+                if (displayFollower is null)
+                    return;
+
                 if(target == null)
                 {
-                    displayFollower.gameObject.SetActive(false);
+                    displayFollower.enabled = false;
                 }
                 else
                 {
                     displayFollower.target = target;
-                    displayFollower.gameObject.SetActive(true);
+                    displayFollower.enabled = true;
                 }
             }
-            public void UpdateAssignment(Assignment assignment)
+            public void UpdateStatus()
             {
-                this.assignment = assignment;
-
-                showStatusImage = assignment.isAssigned;
-
+                showStatusImage = isAssigned;
                 statusImage.sprite = instance.sprite_Checkmark;
+                statusImage.SetNativeSize();
+
+                Assignment? currentAssignment = configuration.GetAssignment(controller);
+
+                if(currentAssignment.HasValue)
+                {
+                    float tempAlpha = targetColor.w;
+                    if (currentAssignment.Value.position.IsPositive())
+                        targetColor = currentAssignment.Value.color;
+                    else
+                        targetColor = Color.white;
+
+                    targetColor.w = tempAlpha;
+                }
+
+                //this.assignment = assignment;
+
+                //showStatusImage = assignment.isAssigned;
             }
             #endregion
 
             #region Events
             public void OnHoverStart(MonoBehaviour mono)
             {
-                if (assignment.isAssigned)
+                if (isAssigned)
+                {
                     statusImage.sprite = instance.sprite_Xmark;
+                    statusImage.SetNativeSize();
+                }
 
-                Log.LogDebug($"ControllerIconManager.OnHoverStart {name}: {assignment}");
+                Log.LogDebug($"ControllerIconManager.OnHoverStart {name}: {name}");
             }
             public void OnHoverStop(MonoBehaviour mono)
             {
-                if (assignment.isAssigned)
+                if (isAssigned)
+                {
                     statusImage.sprite = instance.sprite_Checkmark;
+                    statusImage.SetNativeSize();
+                }
             }
             public void OnClickIcon(MonoBehaviour mono)
             {
@@ -449,12 +495,6 @@ namespace XSplitScreen
             {
                 if (hasTemporaryAssignment)
                     return;
-
-                hasTemporaryAssignment = true;
-                showStatusImage = false;
-
-                cursorImage.sprite = deviceImage.sprite;
-                cursorImage.SetNativeSize();
 
                 XButton button = mono as XButton;
 
@@ -466,12 +506,13 @@ namespace XSplitScreen
                 if (cursorFollower.inputModule is null)
                     return;
 
+                hasTemporaryAssignment = true;
+                showStatusImage = false;
+
                 cursorFollower.transform.position = cursorFollower.inputModule.mousePosition;
                 cursorFollower.gameObject.SetActive(true);
 
-                //statusImage.enabled = false;
-
-                onStartDragIcon.Invoke(this, assignment);
+                onStartDragIcon.Invoke(this);
             }
             public void OnClickCursor(MonoBehaviour mono)
             {
@@ -480,7 +521,7 @@ namespace XSplitScreen
             public void OnPointerUpCursor(MonoBehaviour mono)
             {
                 cursorFollower.gameObject.SetActive(false);
-                onStopDragIcon.Invoke(this, assignment);
+                onStopDragIcon.Invoke(this);
                 hasTemporaryAssignment = false;
             }
             #endregion
@@ -488,7 +529,7 @@ namespace XSplitScreen
         #endregion
 
         #region Definitions
-        public class IconEvent : UnityEvent<Icon, Assignment> { }
+        public class IconEvent : UnityEvent<Icon> { }
         #endregion
     }
 }

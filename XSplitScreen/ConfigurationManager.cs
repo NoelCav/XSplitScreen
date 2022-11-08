@@ -9,6 +9,7 @@ namespace XSplitScreen
 {
     // TODO
     // create buttons to switch between different pages
+    // state machine no longer needed due to defunct logic
     class ConfigurationManager : MonoBehaviour
     {
         #region Variables
@@ -72,9 +73,9 @@ namespace XSplitScreen
 
             public RectTransform followerContainer { get; private set; }
             public ControllerIconManager controllerIcons { get; private set; }
-            public GraphManager graphManager { get; private set; }
+            public AssignmentManager graphManager { get; private set; }
 
-            public int currentDisplay { get; private set; }
+            public static int currentDisplay { get; private set; }
             #endregion
 
             #region Base Methods
@@ -105,6 +106,8 @@ namespace XSplitScreen
             #region Initialization & Exit
             private void InitializePage()
             {
+                currentDisplay = 0;
+
                 page = Instantiate(instance.basePageObjectPrefab).GetComponent<RectTransform>();
                 page.SetParent(gameObject.transform);
                 page.name = "(Page) Controller Assignment";
@@ -115,7 +118,7 @@ namespace XSplitScreen
 
                 controllerIcons = gameObject.AddComponent<ControllerIconManager>();
 
-                graphManager = new GameObject("Graph Manager", typeof(RectTransform), typeof(UnityEngine.UI.LayoutElement)).AddComponent<GraphManager>();
+                graphManager = new GameObject("Graph Manager", typeof(RectTransform), typeof(UnityEngine.UI.LayoutElement)).AddComponent<AssignmentManager>();
 
                 //var element = graphManager.GetComponent<UnityEngine.UI.LayoutElement>();
 
@@ -127,6 +130,7 @@ namespace XSplitScreen
                 Log.LogDebug($"Graph Manager created");
 
                 Destroy(page.GetChild(5).gameObject);
+
                 //graphManager = page.GetComponentInChildren<UserProfileListController>().gameObject.AddComponent<GraphManager>();
 
                 //Destroy(graphManager.GetComponent<UserProfileListController>());
