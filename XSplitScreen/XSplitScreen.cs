@@ -278,11 +278,6 @@ namespace XSplitScreen
         public class Configuration
         {
             #region Variables
-            // OnConfiguration event
-            // Create the menu during ToggleUI
-            //public AssignmentEvent onAssignmentLoaded { get; private set; }
-            //public AssignmentEvent onAssignmentUnloaded { get; private set; }
-            //public AssignmentEvent onAssignmentUpdate { get; private set; }
             public UnityEvent onConfigurationUpdated { get; private set; }
 
             public Action<ControllerStatusChangedEventArgs> onControllerConnected;
@@ -295,6 +290,11 @@ namespace XSplitScreen
 
             public bool enabled = false;
 
+            public int localPlayerCount { get; private set; }
+            public readonly int maxLocalPlayers = 4;
+
+            private bool devMode = true;
+
             private List<Preference> preferences;
 
             private ConfigFile config;
@@ -303,15 +303,32 @@ namespace XSplitScreen
             private ConfigEntry<bool> enabledConfig;
             private ConfigEntry<bool> autoKeyboardConfig;
             private ConfigEntry<int> playerCountConfig;
-
-            private const int maxLocalPlayers = 4;
             #endregion
 
-            #region Initialization & Exit
+            #region Unity Methods
             public Configuration(ConfigFile configFile)
             {
                 InitializeReferences();
                 LoadConfigFile(configFile);
+                InitializeAssignments();
+                Save();
+            }
+            public void Destroy()
+            {
+                ToggleListeners(false);
+
+                if(devMode)
+                    ClearSave();
+
+                Save();
+            }
+            #endregion
+
+            #region Initialization & Exit
+            private void ClearSave()
+            {
+                preferences.Clear();
+                assignments.Clear();
                 InitializeAssignments();
             }
             private void InitializeReferences()
@@ -428,15 +445,6 @@ namespace XSplitScreen
                     }
                 }
             }
-            public void Destroy()
-            {
-                ToggleListeners(false);
-
-                Save();
-            }
-            #endregion
-
-            #region Events
             private void ToggleListeners(bool status)
             {
                 if (status)
@@ -450,6 +458,9 @@ namespace XSplitScreen
                     ReInput.ControllerDisconnectedEvent -= OnControllerDisconnected;
                 }
             }
+            #endregion
+
+            #region Events
             public void OnControllerConnected(Rewired.ControllerStatusChangedEventArgs args)
             {
                 if (args.controllerType == ControllerType.Mouse)
@@ -491,10 +502,15 @@ namespace XSplitScreen
             }
             public bool IsAssigned(Controller controller)
             {
+                if (controller is null)
+                    return false;
+
                 foreach (Assignment assignment in assignments)
                 {
                     if (assignment.HasController(controller))
+                    {
                         return true;
+                    }
                 }
 
                 return false;
@@ -506,44 +522,16 @@ namespace XSplitScreen
             #endregion
 
             #region Assignments
-            private void LoadAssignment(int preferenceId, Controller controller)
+            public void PushChanges(List<Assignment> changes)
             {
-                Assignment newAssignment = new Assignment(controller);
-
-                newAssignment.Load(preferences[preferenceId]);
-
-                assignments.Add(newAssignment);
-
-                //onAssignmentLoaded.Invoke(controller, newAssignment);++
-
-                //Assignment assignment = GetPreference(controller);
-
-                //activeAssignments.Add(assignment);
-
-                //onAssignmentUpdate.Invoke(controller, assignment);
+                foreach(Assignment change in changes)
+                {
+                    SetAssignment(change);
+                }
             }
-            public bool PushChanges(List<Assignment> changes)
+            public void SetAssignment(Assignment assignment)
             {
-                var readOnly = changes.ToArray();
-
-                if (readOnly.Length != assignments.Count)
-                    return false;
-
-                foreach (Assignment change in readOnly)
-                {
-                    for(int e = 0; e < assignments.Count; e++)
-                    {
-                        assignments[e] = change;
-                    }
-                }
-
-                if (Save())
-                {
-                    onConfigurationUpdated.Invoke();
-                    return true;
-                }
-                else
-                    return false;
+                assignments[assignment.playerId] = assignment;
             }
             public bool Save()
             {
@@ -563,86 +551,37 @@ namespace XSplitScreen
                 }
 
             }
-
-            #region Helpers
-            private Assignment GetPreference(Controller controller)
+            private void LoadAssignment(int preferenceId, Controller controller)
             {
-                /*
                 Assignment newAssignment = new Assignment(controller);
 
-                bool foundPreference = false;
+                newAssignment.Load(preferences[preferenceId]);
 
-                foreach(Preference preference in preferences)
-                {
-                    if (preference.Matches(controller))
-                    {
-                        foundPreference = true;
-                        newAssignment.Load(preference);
-                    }
-                }
-
-                if(!foundPreference)
-                {
-                    CreatePreference(controller);
-                    newAssignment.Load(preferences[preferences.Count - 1]);
-                }
-
-                if(newAssignment.isAssigned)
-                {
-                    if(!newAssignment.context.IsPositive())
-                    {
-                        newAssignment.context = new int2(1, 0);
-                    }
-                }
-
-                return newAssignment;
-                */
-                return new Assignment();
-            }
-            private void CreatePreference(Controller controller)
-            {
-                /*
-                Preference newPreference = new Preference()
-                {
-                    deviceId = controller.id,
-                    isKeyboard = controller.type == ControllerType.Keyboard,
-                    position = int2.negative,
-                    context = int2.negative,
-                    displayId = -1,
-                    profile = "",
-                };
-
-                if(newPreference.isKeyboard)
-                {
-                    newPreference.position = int2.one;
-                    newPreference.context = new int2(1, 0);
-                    newPreference.profile = LocalUserManager.GetFirstLocalUser().userProfile.fileName;
-                    newPreference.displayId = 0;
-                }
-
-                preferences.Add(newPreference);
-
-                Log.LogMessage($"Created new preference for '{controller.name}'");
-                */
+                assignments.Add(newAssignment);
             }
             private void UpdatePreferences()
             {
+                localPlayerCount = 0;
+
                 foreach(Assignment assignment in assignments)
                 {
                     for(int e = 0; e < preferences.Count; e++)
                     {
                         if(assignment.Matches(preferences[e]))
                         {
-                            preferences[e].Update(assignment);
-                            //var newPreference = preferences[e];
-                            //newPreference.Update(assignment);
-                            //preferences[e] = newPreference;
+                            var preference = preferences[e];
+                            preference.Update(assignment);
+                            preferences[e] = preference;
                             break;
                         }
                     }
+
+                    if(assignment.isAssigned)
+                        localPlayerCount++;
                 }
+
+                onConfigurationUpdated.Invoke();
             }
-            #endregion
             #endregion
 
             #region Definitions
@@ -787,7 +726,7 @@ namespace XSplitScreen
             {
                 get
                 {
-                    return playerId > -1;
+                    return position.IsPositive() && playerId > -1;
                 }
             }
             public bool isKeyboard
@@ -831,17 +770,23 @@ namespace XSplitScreen
             }
             public void Load(Assignment assignment)
             {
-                this.controller = assignment.controller;
+                controller = assignment.controller;
                 displayId = assignment.displayId;
                 playerId = assignment.playerId;
                 profileId = assignment.profileId;
                 color = assignment.color;
             }
+            public void Load(AssignmentManager.Screen screen)
+            {
+                position = screen.position;
+                displayId = ConfigurationManager.ControllerAssignmentState.currentDisplay;
+                Log.LogDebug($"Assignment.Load screen: '{this}'");
+            }
             public void Load(Controller controller)
             {
                 this.controller = controller;
             }
-            public void ResetAssignment()
+            public void ClearPlayer()
             {
                 this.controller = null;
                 context = int2.negative;
@@ -849,16 +794,16 @@ namespace XSplitScreen
                 profileId = -1;
                 color = Color.white;
             }
-            public void ResetScreen()
+            public void ClearScreen()
             {
                 position = int2.negative;
+                displayId = -1;
                 //context = int2.negative; // Last known change
             }
-            public void Reset()
+            public void ClearAll()
             {
-                ResetScreen();
-                ResetAssignment();
-                displayId = -1;
+                ClearScreen();
+                ClearPlayer();
                 playerId = -1;
                 profileId = -1;
                 color = Color.white;

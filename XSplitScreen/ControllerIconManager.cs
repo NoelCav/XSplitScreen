@@ -14,7 +14,7 @@ namespace XSplitScreen
 
     // On the first launch of the plugin the controller icons should pop out of a chest
 
-    class ControllerIconManager : MonoBehaviour
+    public class ControllerIconManager : MonoBehaviour
     {
         #region Variables
         public static ControllerIconManager instance { get; private set; }
@@ -271,7 +271,18 @@ namespace XSplitScreen
             public IconEvent onStartDragIcon { get; private set; }
             public IconEvent onStopDragIcon { get; private set; }
 
-            public bool isAssigned => configuration.IsAssigned(controller);
+            public bool isAssigned
+            {
+                get
+                {
+                    var assignment = configuration.GetAssignment(controller);
+
+                    if (!assignment.HasValue)
+                        return false;
+
+                    return assignment.Value.isAssigned;
+                }
+            }
             public bool potentialReassignment = false;
             public bool showStatusImage = false;
             public bool hasTemporaryAssignment = false;
@@ -338,9 +349,12 @@ namespace XSplitScreen
                 // TODO organize
                 displayFollower = new GameObject($"(Display Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 displayFollower.transform.SetParent(followerContainer);
-                displayFollower.transform.localScale = Vector3.one * 0.18f;
+                displayFollower.transform.localScale = Vector3.one * 0.19f;
                 displayFollower.movementSpeed = iconFollowerSpeed;
                 displayFollower.smoothMovement = true;
+                displayFollower.target = GetComponent<RectTransform>();
+                displayFollower.CatchUp();
+
                 displayImage = displayFollower.GetComponent<Image>();
                 displayImage.color = targetColor;
 
@@ -362,8 +376,6 @@ namespace XSplitScreen
                 iconFollower.smoothMovement = true;
                 //iconFollower.transform.localPosition = new Vector3(Screen.width / 2f, Screen.height / 2f, 0);
                 
-                Log.LogDebug($"Icon.Initialize setting iconFollower position to '{iconFollower.transform.localPosition}'");
-
                 button = iconFollower.GetComponent<XButton>();
                 button.allowAllEventSystems = true;
                 button.onPointerDown.AddListener(OnPointerDownIcon);
