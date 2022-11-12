@@ -93,6 +93,7 @@ namespace XSplitScreen
             base.OnPointerExit(eventData);
 
             onHoverStop.Invoke(this);
+            eventSystem.SetSelectedGameObject(null);
         }
         public void OnClick()
         {

@@ -531,6 +531,9 @@ namespace XSplitScreen
             }
             public void SetAssignment(Assignment assignment)
             {
+                if (!assignment.position.IsPositive())
+                    assignment.controller = null;
+
                 assignments[assignment.playerId] = assignment;
             }
             public bool Save()
@@ -743,7 +746,7 @@ namespace XSplitScreen
             }
             public override string ToString()
             {
-                return $"Assignment(position = '{position}', playerId = '{playerId}', controller = '{controller != null}')";
+                return $"Assignment(position = '{position}', playerId = '{playerId}', profileId = '{playerId}', controller = '{controller != null}')";
             }
             public bool Matches(Preference preference)
             {

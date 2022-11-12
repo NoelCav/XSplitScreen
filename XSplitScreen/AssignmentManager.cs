@@ -6,6 +6,7 @@ using Rewired;
 using RoR2;
 using RoR2.UI;
 using RoR2.UI.MainMenu;
+using RoR2.UI.SkinControllers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -139,34 +140,14 @@ namespace XSplitScreen
             Log.LogDebug($"Adding player to '{screen.name}'");
             AddPlayer(screen);
         }
+        public void OnClickScreenRemovePlayer(Screen screen)
+        {
+            RemovePlayer(screen);
+        }
         public void OnControllerConnected(ControllerStatusChangedEventArgs args)
         {
             display.UpdateDisplayFollowers();
             display.CatchUpFollowers();
-        }
-        public void OnClickScreen(Screen screen)
-        {
-            Log.LogDebug($"Clicked on '{screen.name}'");
-        }
-        public void OnAssignmentLoaded(Controller controller, Assignment assignment)
-        {
-
-        }
-        public void OnAssignmentUnloaded(Controller controller, Assignment assignment)
-        {
-
-        }
-        public void OnIconAdded(Icon icon)
-        {
-        }
-        public void OnIconRemoved(Icon icon)
-        {
-        }
-        public void OnStartDragIcon(Icon icon)
-        {
-        }
-        public void OnStopDragIcon(Icon icon)
-        {
         }
         // TODO
 
@@ -174,9 +155,26 @@ namespace XSplitScreen
         //
         // Potential infinite loop involving events causing crash
         // yeah just rewrite it
+        // rewriting it!
         #endregion
 
-        #region Graph
+        #region Assignments
+        public void SetProfile(int profileId, int2 destination)
+        {
+            var nodeData = graph.GetNodeData(destination);
+
+            if (!nodeData.isAssigned)
+                return;
+
+            changeBuffer.Clear();
+
+            nodeData.profileId = profileId;
+
+            graph.SetNodeData(destination, nodeData);
+
+            PushToBuffer(nodeData);
+            PushToConfiguration();
+        }
         private void LoadAssignments()
         {
             foreach(Assignment assignment in configuration.assignments)
@@ -215,10 +213,7 @@ namespace XSplitScreen
             // Load new assignment to the graph
             AssignToGraph(duplicateAssignment, screen.position);
 
-            configuration.PushChanges(changeBuffer);
-            // Save changes
-            configuration.Save();
-
+            PushToConfiguration();
             PrintGraph("AddPlayer");
         }
         private void RemovePlayer(Screen screen)
@@ -246,10 +241,17 @@ namespace XSplitScreen
                 return;
 
             ClearAssignment(destination);
-            ShiftRadial(destination, false);
+
+            var node = graph.GetNode(destination);
+
             // TODO
-            // Create X button on the player pane to unassign player
-            // Determine node type and either ShiftRadial or ShiftLinear
+            // Edge case: When unassigning a player with 4 players assigned then only shift the player with the lowest playerId
+            // Bug: Controller not auto assigning?
+
+            if (node.nodeType == NodeType.Secondary)
+                ShiftLinear(destination, true);
+            else
+                ShiftRadial(destination, false);
         }
         private void ShiftRadial(int2 origin, bool expand)
         {
@@ -270,9 +272,108 @@ namespace XSplitScreen
                 ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
             }
         }
+        private void ShiftLinear(int2 origin, bool reverse)
+        {
+            Log.LogDebug($"AssignmentManager.ShiftLinear: origin = '{origin}'");
+            Direction direction = Direction.None;
+
+            var node = graph.GetNode(origin);
+
+            if (!HasNeighbor(node, Direction.Up))
+                direction = reverse ? Direction.Up : Direction.Down;
+            else if (!HasNeighbor(node, Direction.Right))
+                direction = reverse ? Direction.Right : Direction.Left;
+            else if (!HasNeighbor(node, Direction.Down))
+                direction = reverse ? Direction.Down : Direction.Up;
+            else if (!HasNeighbor(node, Direction.Left))
+                direction = reverse ? Direction.Left : Direction.Right;
+
+            if (direction == Direction.None)
+                return;
+
+            int2 shiftDirection = int2.zero;
+
+            if (direction == Direction.Up)
+                shiftDirection.x = -1;
+            if (direction == Direction.Right)
+                shiftDirection.y = 1;
+            if (direction == Direction.Down)
+                shiftDirection.x = 1;
+            if (direction == Direction.Left)
+                shiftDirection.y = -1;
+
+            bool byColumn = false;
+
+            int startingX = 0;
+            int boundX = configuration.graphDimensions.x;
+            int xIncrement = 1;
+            int startingY = 0;
+            int boundY = configuration.graphDimensions.y;
+            int yIncrement = 1;
+
+            switch (direction)
+            {
+                case Direction.Right:
+                    startingY = 2;
+                    yIncrement = -1;
+                    boundY = -1;
+                    break;
+                case Direction.Left:
+                    byColumn = true;
+                    break;
+                case Direction.Up:
+                    byColumn = true;
+                    startingX = 0;
+                    break;
+                case Direction.Down:
+                    startingX = 2;
+                    xIncrement = -1;
+                    boundX = -1;
+                    break;
+            }
+
+            if (byColumn)
+            {
+                for (int wX = startingX; wX != boundX; wX += xIncrement)
+                {
+                    for (int wY = startingY; wY != boundY; wY += yIncrement)
+                    {
+                        int2 position = new int2(wX, wY);
+
+                        //ShiftNeighbor(position, position.Add(shiftDirection));
+                        ShiftNeighbor(position, position.Add(shiftDirection));
+                    }
+                }
+            }
+            else
+            {
+                for (int hY = startingY; hY != boundY; hY += yIncrement)
+                {
+                    for (int hX = startingX; hX != boundX; hX += xIncrement)
+                    {
+                        int2 position = new int2(hX, hY);
+
+                        //ShiftNeighbor(position, position.Add(shiftDirection));
+                        ShiftNeighbor(position, position.Add(shiftDirection));
+                    }
+                }
+            }
+        }
+        private bool HasNeighbor(Node<Assignment> node, Direction direction)
+        {
+            if (direction == Direction.Up)
+                return node.neighborUp.IsPositive();
+            else if (direction == Direction.Right)
+                return node.neighborRight.IsPositive();
+            else if (direction == Direction.Down)
+                return node.neighborDown.IsPositive();
+            else if (direction == Direction.Left)
+                return node.neighborLeft.IsPositive();
+            return false;
+        }
         private void ShiftNeighbor(int2 origin, int2 destination)
         {
-            if (!origin.IsPositive())
+            if (!graph.ValidPosition(origin) || !graph.ValidPosition(destination))
                 return;
 
             if(graph.GetNode(origin).nodeData.data.isAssigned)
@@ -333,6 +434,12 @@ namespace XSplitScreen
                 changeBuffer.Add(assignment);
             }
         }
+        private void PushToConfiguration()
+        {
+            configuration.PushChanges(changeBuffer);
+            // Save changes
+            configuration.Save();
+        }
         private void PrintGraph(string title = "")
         {
             // Debug graph assignments (linear shift not working when unassign main in 3 way)
@@ -387,6 +494,8 @@ namespace XSplitScreen
         public class ScreenDisplay : MonoBehaviour
         {
             #region Variables
+            public static ScreenDisplay instance { get; private set; }
+
             public readonly int2 screenDimensions = new int2(135, 135);
             
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
@@ -429,6 +538,11 @@ namespace XSplitScreen
             }
             private void InitializeReferences()
             {
+                if (instance)
+                    Destroy(instance.gameObject);
+
+                instance = this;
+
                 texture_display = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display.png");
                 texture_display_center = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_center.png");
                 texture_display_screen = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_screen.png");
@@ -575,14 +689,19 @@ namespace XSplitScreen
                 foreach (Screen screen in screens)
                     screen.showAddPlayerButton = false;
 
+                bool[] shouldCatchUpPanePosition = new bool[4];
+
                 for(int e = 0; e < panes.Length; e++)
+                {
+                    shouldCatchUpPanePosition[e] = !panes[e].HasAssignment();
                     panes[e].ClearAssignment();
+                }
 
                 // Update buttons then dividers
 
-                var data = instance.graph.GetGraph();
+                var data = AssignmentManager.instance.graph.GetGraph();
 
-                var center = instance.graph.GetNodeData(int2.one);
+                var center = AssignmentManager.instance.graph.GetNodeData(int2.one);
 
                 bool hasAssignment = false;
 
@@ -616,10 +735,10 @@ namespace XSplitScreen
                     {
                         var node = data[x][y];
 
-                        var neighborUp = instance.graph.GetNode(node.neighborUp);
-                        var neighborRight = instance.graph.GetNode(node.neighborRight);
-                        var neighborDown = instance.graph.GetNode(node.neighborDown);
-                        var neighborLeft = instance.graph.GetNode(node.neighborLeft);
+                        var neighborUp = AssignmentManager.instance.graph.GetNode(node.neighborUp);
+                        var neighborRight = AssignmentManager.instance.graph.GetNode(node.neighborRight);
+                        var neighborDown = AssignmentManager.instance.graph.GetNode(node.neighborDown);
+                        var neighborLeft = AssignmentManager.instance.graph.GetNode(node.neighborLeft);
 
                         int screenIndex = Utils.FlatIndexFrom2D(node.nodeData.data.position, configuration.graphDimensions.x, false);
 
@@ -687,7 +806,7 @@ namespace XSplitScreen
                         screen.LoadAssignment(node.nodeData.data);
 
                         if(node.nodeData.data.isAssigned)
-                            panes[node.nodeData.data.playerId].LoadAssignment(node.nodeData.data, screen);
+                            panes[node.nodeData.data.playerId].LoadAssignment(node.nodeData.data, screen, shouldCatchUpPanePosition[node.nodeData.data.playerId]);
                     }
                 }
             }
@@ -696,56 +815,16 @@ namespace XSplitScreen
                 Screen screen = (mono as XButton).transform.parent.GetComponent<Screen>();
 
                 if(screen != null)
-                    instance.OnClickScreenAddPlayer(screen);
-            }
-            public void OnPointerUpScreen(MonoBehaviour mono)
-            {
-                Log.LogDebug($"GraphDisplay.OnPointerDownScreen = '{mono.name}'");
-                return;
-                XButton button = mono as XButton;
-
-                if (button is null)
-                    return;
-
-                if (button.eventSystem is null || button.eventSystem.currentInputModule is null || button.eventSystem.currentInputModule.input is null)
-                    return;
-
-                Screen closestScreen = null;
-
-                Vector3 mousePosition = button.eventSystem.currentInputModule.input.mousePosition;
-                Vector3 workingVector = Vector3.zero;
-
-                float maxDistance = 25f;
-
-                float screenDistance = float.MaxValue;
-                float currentScreenDistance = float.MaxValue;
-
-                foreach (Screen screen in instance.display.screens)
-                {
-                    workingVector = mousePosition - screen.transform.position;
-
-                    currentScreenDistance = workingVector.sqrMagnitude / 1000f;
-
-                    if (currentScreenDistance <= maxDistance)
-                    {
-                        if (currentScreenDistance < screenDistance)
-                        {
-                            screenDistance = currentScreenDistance;
-                            closestScreen = screen;
-                        }
-                    }
-                }
-
-                if (closestScreen is null)
-                    return;
-
-                instance.OnClickScreen(closestScreen);
+                    AssignmentManager.instance.OnClickScreenAddPlayer(screen);
             }
             #endregion
 
             #region Display
             public void UpdateDisplayFollowers()
             {
+                foreach (Icon icon in ControllerIconManager.instance.icons)
+                    icon.UpdateDisplayFollower(null);
+
                 foreach (Screen screen in screens)
                 {
                     screen.addPlayerTargetColor.w = 1;
@@ -760,6 +839,7 @@ namespace XSplitScreen
                             {
                                 if (assignment.HasController(icon.controller))
                                 {
+                                    Log.LogDebug($"AssignmentManager.UpdateDisplayFollowers: icon = '{icon.name}'");
                                     icon.UpdateDisplayFollower(screen.gameObject.GetComponent<RectTransform>());
                                 }
                             }
@@ -877,13 +957,21 @@ namespace XSplitScreen
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
 
             private Image background;
+            private Image remove;
 
             private Follower follower;
 
             private MPDropdown profileDropdown;
+
+            private Assignment assignment;
             #endregion
 
             #region Unity Methods
+            public void Start()
+            {
+                if (follower.enabled)
+                    follower.CatchUp();
+            }
             public void Update()
             {
                 if (follower.enabled)
@@ -913,54 +1001,109 @@ namespace XSplitScreen
 
                 follower = gameObject.GetComponent<Follower>();
                 follower.smoothMovement = true;
-                follower.movementSpeed = 0.75f;
+                follower.movementSpeed = .45f;
 
                 InitializePane();
             }
             private void InitializePane()
             {
-                Log.LogDebug($"PlayerPane.InitializePane: MainMenuController.instance.settingsMenuScreen = {MainMenuController.instance.settingsMenuScreen.gameObject.name}");
-
                 GameObject prefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<MPDropdown>(true).gameObject;
 
                 profileDropdown = Instantiate(prefab, transform).GetComponent<MPDropdown>();
-                profileDropdown.transform.localPosition = Vector3.zero + new Vector3(101.5f, -75.1f);
+                //profileDropdown.gameObject.GetComponent<ButtonSkinController>().skinData = GameObject.Find("NakedButton (Back)").GetComponent<ButtonSkinController>().skinData;
+                profileDropdown.name = "ProfileDropdown";
+                profileDropdown.transform.localPosition = new Vector3(101.5f, -75.1f);
                 profileDropdown.transform.localScale = Vector3.one * .79f;
                 profileDropdown.gameObject.SetActive(true);
                 profileDropdown.allowAllEventSystems = true;
                 profileDropdown.GetComponent<Image>().SetNativeSize();
                 profileDropdown.template.gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.template.gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
+                //profileDropdown.template.gameObject.GetComponentInChildren<PanelSkinController>().skinData = GameObject.Find("NakedButton (Profile)").GetComponent<ButtonSkinController>().skinData;
+                //Log.LogDebug($"PlayerPane.InitializePane: button = '{GameObject.Find("NakedButton (Profile)")}'");
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
+                profileDropdown.onValueChanged.AddListener(OnProfileSelected);
 
-                List<string> options = new List<string>();
-
-                int id = 1;
-                foreach(KeyValuePair<string, UserProfile> keyPair in PlatformSystems.saveSystem.loadedUserProfiles)
-                {
-                    options.Add($"Profile {id}");
-                    id++;
-                    //options.Add(keyPair.Value.name);
-                }
-
-                profileDropdown.ClearOptions();
-                profileDropdown.AddOptions(options);
-                //profil
+                remove = new GameObject("(XButton) Remove Player", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
+                remove.transform.SetParent(transform);
+                remove.transform.localScale = Vector3.one * 0.2f;
+                remove.transform.localPosition = new Vector3(75f, 75f, 0f);
+                remove.sprite = ControllerIconManager.instance.sprite_Xmark;
+                remove.SetNativeSize();
+                remove.GetComponent<XButton>().onClickMono.AddListener(OnRemovePlayer);
             }
             #endregion
 
             #region Assignment
-            public void LoadAssignment(Assignment assignment, Screen screen)
+            public bool HasAssignment()
             {
+                return assignment.playerId > -1;
+            }
+            public void LoadAssignment(Assignment assignment, Screen screen, bool resetPosition = false)
+            {
+                if(resetPosition) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center!
+                {
+                    follower.target = transform.parent.GetComponent<RectTransform>();
+                    follower.CatchUp();
+                }
+
                 follower.target = screen.GetComponent<RectTransform>();
                 follower.enabled = true;
-                profileDropdown.gameObject.SetActive(true);
+                this.assignment = assignment;
+                UpdateUI();
             }
             public void ClearAssignment()
             {
                 follower.enabled = false;
-                profileDropdown.gameObject.SetActive(false);
+                UpdateUI();
+            }
+            private void UpdateUI()
+            {
+                profileDropdown.gameObject.SetActive(follower.enabled);
+                remove.gameObject.SetActive(follower.enabled);
+
+                if (follower.enabled)
+                {
+                    profileDropdown.onValueChanged.RemoveAllListeners();
+                    List<string> options = new List<string>();
+
+                    options.Add(" - Select Profile -");
+
+                    foreach (KeyValuePair<string, UserProfile> keyPair in PlatformSystems.saveSystem.loadedUserProfiles)
+                    {
+                        //options.Add($"Profile {id}");
+                        //id++;
+                        options.Add(keyPair.Value.name);
+                    }
+                    // TODO
+                    // Add remove player button (regular xbutton, will need shiftlinear)
+                    // enableDivider should look at neighbors for main nodes to determine whether it should display
+                    // only show addplayer buttons when mouse near display?
+                    // Color selection (draggable from settings)
+                    // Controller drag & drop
+                    // Switch display
+                    // Enable splitscreen!
+
+                    profileDropdown.ClearOptions();
+                    profileDropdown.AddOptions(options);
+
+                    if (assignment.profileId > -1)
+                        profileDropdown.value = assignment.profileId + 1;
+                }
+            }
+            #endregion
+
+            #region Event Handlers
+            public void OnProfileSelected(int profileId)
+            {
+                instance.SetProfile(profileId - 1, assignment.position);
+                //MPEventSystem.current.SetSelectedGameObject(null);
+            }
+            public void OnRemovePlayer(MonoBehaviour mono)
+            {
+                instance.OnClickScreenRemovePlayer(ScreenDisplay.instance.screens[Utils.FlatIndexFrom2D(assignment.position, configuration.graphDimensions.x, false)]);
+                //instance.RemovePlayer()
             }
             #endregion
         }

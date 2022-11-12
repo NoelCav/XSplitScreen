@@ -150,7 +150,7 @@ namespace XSplitScreen
         {
             foreach(Icon icon in icons)
             {
-                icon.UpdateStatus();
+                //icon.UpdateStatus();
             }
         }
         public void OnControllerConnected(ControllerStatusChangedEventArgs args)
@@ -454,6 +454,10 @@ namespace XSplitScreen
                     displayFollower.target = target;
                     displayFollower.enabled = true;
                 }
+
+                displayImage.raycastTarget = displayFollower.enabled;
+
+                UpdateStatus();
             }
             public void UpdateStatus()
             {
@@ -463,16 +467,17 @@ namespace XSplitScreen
 
                 Assignment? currentAssignment = configuration.GetAssignment(controller);
 
-                if(currentAssignment.HasValue)
+                float tempAlpha = targetColor.w;
+
+                targetColor = Color.white;
+
+                if (currentAssignment.HasValue)
                 {
-                    float tempAlpha = targetColor.w;
                     if (currentAssignment.Value.position.IsPositive())
                         targetColor = currentAssignment.Value.color;
-                    else
-                        targetColor = Color.white;
-
-                    targetColor.w = tempAlpha;
                 }
+
+                targetColor.w = tempAlpha;
 
                 //this.assignment = assignment;
 
