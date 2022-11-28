@@ -12,6 +12,8 @@ using static UnityEngine.UI.Button;
 
 namespace XSplitScreen
 { // TODO move to Components
+    
+    // This was supposed to replace ingame buttons but that wasn't a good idea.
     public class XButton : HGButton
     {
         #region Variables

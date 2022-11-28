@@ -172,8 +172,6 @@ namespace XSplitScreen
                     converter.onClickMono.AddListener(OnClickRequestMenu);
             }
 
-            // assign all of the invocations to fix everything
-
             Destroy(onEnableGenericMenu.gameObject.transform.GetChild(0).GetChild(1).gameObject);
             Destroy(onEnableGenericMenu.gameObject.transform.GetChild(0).GetChild(2).gameObject);
             Destroy(onEnableGenericMenu.gameObject.transform.GetChild(0).GetChild(3).gameObject);
@@ -195,14 +193,6 @@ namespace XSplitScreen
                 button.requiredTopLayer = layerKey;
 
             buttonPanel = transform.gameObject.GetComponentInChildren<VerticalLayoutGroup>().GetComponent<RectTransform>();
-
-            //XButtonConverter debugButton = CreateButton("Debug Folder");
-            //debugButton.Initialize();
-
-            //debugButton.hoverToken = XSplitScreen.Language.MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN;
-            //debugButton.token = XSplitScreen.Language.MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN;
-            //debugButton.onClickMono.AddListener(OnClickOpenDebugFolder);
-            //debugButton.defaultFallbackButton = false;
 
             XButtonConverter discordButton = CreateButton("Discord");
             discordButton.Initialize();
@@ -233,9 +223,6 @@ namespace XSplitScreen
 
                 Destroy(button.gameObject);
             }
-
-            //foreach (UserProfileListController controller in assignmentWindow.GetComponentsInChildren<UserProfileListController>(true))
-            //    Destroy(controller);
 
             foreach (UserProfileListElementController controller in assignmentWindow.GetComponentsInChildren<UserProfileListElementController>(true))
                 Destroy(controller.gameObject);
@@ -305,7 +292,7 @@ namespace XSplitScreen
         private XButtonConverter CreateButton(string name = "XButton")
         {
             GameObject template = GameObject.Find("GenericMenuButton (Singleplayer)");
-            Log.LogDebug($"XSplitScreenMenu.CreateButton: template is null = '{template is null}'");
+
             GameObject newXButton = Instantiate(XSplitScreen.buttonTemplate);
 
             newXButton.name = $"XButton ({name})";
