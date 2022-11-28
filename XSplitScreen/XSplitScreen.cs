@@ -47,7 +47,7 @@ namespace XSplitScreen
         public static Input input { get; private set; }
         public static GameObject buttonTemplate { get; private set; }
 
-        private static readonly bool developerMode = false;
+        private static readonly bool developerMode = true;
 
         private static Coroutine WaitForMenuRoutine;
         private static Coroutine WaitForRewiredRoutine;
@@ -1388,15 +1388,6 @@ namespace XSplitScreen
                             || assignment.controller == null || assignment.displayId == -1 ||
                             assignment.displayId >= Display.displays.Length)
                             return false;
-
-                        foreach (Assignment otherAssignment in configuration.assignments)
-                        {
-                            if (otherAssignment.position.Equals(assignment.position))
-                                continue;
-
-                            if (otherAssignment.profileId == assignment.profileId)
-                                return false;
-                        }
                     }
                 }
 
