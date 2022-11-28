@@ -57,6 +57,7 @@ namespace XSplitScreen
 
         private bool readyToInitializePlugin;
         private bool readyToCreateUI;
+        private bool centerCursors;
 
         private int createUIFrameBuffer = 5;
         #endregion
@@ -188,6 +189,7 @@ namespace XSplitScreen
         #endregion
 
         #region Hooks & Event Handlers
+        // TODO remove this once we're certain it's not needed
         private void ToggleUIListeners(bool status)
         {
             if (MainMenuController.instance?.titleMenuScreen is null)
@@ -260,24 +262,75 @@ namespace XSplitScreen
             if (status)
             {
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
+
                 On.RoR2.UI.MPButton.Update += MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.Awake += MPButton_Awake;
+                On.RoR2.UI.MPButton.CanBeSelected += MPButton_CanBeSelected;
+
+                On.RoR2.UI.MPInput.CenterCursor += MPInput_CenterCursor;
+
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
-                On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
+
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject;
+
+                On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
+
                 On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon;
+
+                On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
+                On.RoR2.UI.SurvivorIconController.UpdateAvailability += SurvivorIconController_UpdateAvailability;
+
+                // TODO fix vote counting
+                On.RoR2.UI.RuleChoiceController.FindNetworkUser += RuleChoiceController_FindNetworkUser;
+
+                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData += LoadoutPanelController_UpdateDisplayData;
+
+                On.RoR2.RunCameraManager.Update += RunCameraManager_Update;
+
+                On.RoR2.LocalCameraEffect.OnUICameraPreCull += LocalCameraEffect_OnUICameraPreCull;
+
+                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal;
+
+                // UILayerKey.topLayerRepresentations and queries should probably be handled by this plugin. 
+                // MPButton_CanBeSelected is a quick hack to get things working but it makes layer keys useless
+                //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem += UILayerKey_RefreshTopLayerForEventSystem; 
             }
             else
             {
                 On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
+
                 On.RoR2.UI.MPButton.Update -= MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPButton.Awake -= MPButton_Awake;
+                On.RoR2.UI.MPButton.CanBeSelected -= MPButton_CanBeSelected;
+
+                On.RoR2.UI.MPInput.CenterCursor -= MPInput_CenterCursor;
+
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
-                On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
+
                 On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
+
+                On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
+
                 On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
+
+                On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
+                On.RoR2.UI.SurvivorIconController.UpdateAvailability -= SurvivorIconController_UpdateAvailability;
+
+                On.RoR2.UI.RuleChoiceController.FindNetworkUser -= RuleChoiceController_FindNetworkUser;
+
+                On.RoR2.UI.LoadoutPanelController.UpdateDisplayData -= LoadoutPanelController_UpdateDisplayData;
+
+                On.RoR2.RunCameraManager.Update -= RunCameraManager_Update;
+
+                On.RoR2.LocalCameraEffect.OnUICameraPreCull -= LocalCameraEffect_OnUICameraPreCull;
+
+                On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal -= CombatHealthBarViewer_SetLayoutHorizontal;
+
+                //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem -= UILayerKey_RefreshTopLayerForEventSystem;
             }
         }
 
@@ -286,6 +339,15 @@ namespace XSplitScreen
         {
             orig(self);
             self._forceCursorForGamepad = configuration is null ? false : configuration.enabled;
+        }
+        private void MPButton_OnSubmit()
+        {
+            Log.LogDebug($"MPButton_OnSubmit");
+        }
+        private void MPButton_Awake(On.RoR2.UI.MPButton.orig_Awake orig, MPButton self)
+        {
+            self.onClick.AddListener(MPButton_OnSubmit);
+            orig(self);
         }
         private void MPButton_Update(On.RoR2.UI.MPButton.orig_Update orig, RoR2.UI.MPButton self)
         {
@@ -309,6 +371,7 @@ namespace XSplitScreen
         }
         private void MPButton_OnPointerClick(On.RoR2.UI.MPButton.orig_OnPointerClick orig, RoR2.UI.MPButton self, PointerEventData eventData)
         {
+            Log.LogDebug($"MPButton_OnPointerClick: '{eventData.currentInputModule.name}'");
             input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
             orig(self, eventData);
         }
@@ -326,6 +389,37 @@ namespace XSplitScreen
             }
 
             return false;
+        }
+        private bool MPButton_CanBeSelected(On.RoR2.UI.MPButton.orig_CanBeSelected orig, MPButton self)
+        {
+            if (!self.gameObject.activeInHierarchy)
+                return false;
+
+            return true;
+        }
+        private void MPInput_CenterCursor(On.RoR2.UI.MPInput.orig_CenterCursor orig, MPInput self)
+        {
+            Assignment? assignment = configuration.GetAssignmentByPlayerId(self.playerId - 1);
+
+            if (assignment.HasValue)
+            {
+                Vector2 center = new Vector2(Screen.width, Screen.height) * 0.5f;
+
+                float halfWidth = center.x * 0.5f;
+                float halfHeight = center.y * 0.5f;
+
+                if (assignment.Value.position.x > 1)
+                    center.y -= halfHeight;
+                else if (assignment.Value.position.x < 1)
+                    center.y += halfHeight;
+
+                if (assignment.Value.position.y > 1)
+                    center.x += halfWidth;
+                else if (assignment.Value.position.y < 1)
+                    center.x -= halfWidth;
+
+                self.internalMousePosition = center;
+            }
         }
         private object MPInputModule_GetMousePointerEventData(On.RoR2.UI.MPInputModule.orig_GetMousePointerEventData orig, RoR2.UI.MPInputModule self, int playerId, int mouseIndex)
         {
@@ -470,6 +564,21 @@ namespace XSplitScreen
 
             orig(self);
         }
+        private void SurvivorIconController_UpdateAvailability(On.RoR2.UI.SurvivorIconController.orig_UpdateAvailability orig, SurvivorIconController self)
+        {
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorIsUnlocked, SurvivorCatalog.SurvivorIsUnlockedOnThisClient(self.survivorIndex));
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorRequiredExpansionEnabled, self.survivorDef.CheckRequiredExpansionEnabled((NetworkUser)null));
+
+            bool hasEntitlement = false;
+
+            foreach (LocalUser user in LocalUserManager.readOnlyLocalUsersList)
+            {
+                hasEntitlement |= self.survivorDef.CheckUserHasRequiredEntitlement(user);
+            }
+
+            self.SetBoolAndMarkDirtyIfChanged(ref self.survivorRequiredEntitlementAvailable, hasEntitlement);
+            self.survivorIsAvailable = self.survivorIsUnlocked && self.survivorRequiredExpansionEnabled && self.survivorRequiredEntitlementAvailable;
+        }
         private void MPEventSystem_ValidateCurrentSelectedGameobject(On.RoR2.UI.MPEventSystem.orig_ValidateCurrentSelectedGameobject orig, RoR2.UI.MPEventSystem self)
         {
             if (!self.currentSelectedGameObject)
@@ -482,10 +591,15 @@ namespace XSplitScreen
 
             self.SetSelectedGameObject(null);
         }
+        private void CharacterSelectController_Update(On.RoR2.UI.CharacterSelectController.orig_Update orig, CharacterSelectController self)
+        {
+            if (input.currentEventSystem)
+                self.localUser = input.currentEventSystem.localUser;
+
+            orig(self);
+        }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
         {
-            Log.LogDebug($"XSplitScreen.CharacterSelectBarController_PickIcon");
-
             if (self.pickedIcon == newPickedIcon)
                 return;
 
@@ -495,20 +609,194 @@ namespace XSplitScreen
             if (onSurvivorPicked == null)
                 return;
 
+            LocalUser user = input.currentEventSystem?.localUser;
+
+            if (user is null)
+                return;
+
             onSurvivorPicked.Invoke(new CharacterSelectBarController.SurvivorPickInfo()
             {
-                localUser = input.currentEventSystem.localUser,
+                localUser = user,
                 pickedSurvivor = newPickedIcon.survivorDef
             });
         }
         private void ViewablesCatalog_AddNodeToRoot(On.RoR2.ViewablesCatalog.orig_AddNodeToRoot orig, ViewablesCatalog.Node node)
         {
             node.SetParent(ViewablesCatalog.rootNode);
+
             foreach (ViewablesCatalog.Node descendant in node.Descendants())
-            {
                 if (!ViewablesCatalog.fullNameToNodeMap.ContainsKey(descendant.fullName))
                     ViewablesCatalog.fullNameToNodeMap.Add(descendant.fullName, descendant);
+        }
+        private void UILayerKey_RefreshTopLayerForEventSystem(On.RoR2.UI.UILayerKey.orig_RefreshTopLayerForEventSystem orig, MPEventSystem eventSystem)
+        {
+            int num = int.MinValue;
+
+            UILayerKey uiLayerKey1 = null;
+            UILayerKey layerRepresentation = UILayerKey.topLayerRepresentations[eventSystem];
+
+            List<UILayerKey> instancesList = InstanceTracker.GetInstancesList<UILayerKey>();
+
+            //bool debug = eventSystem.player.id == 2;
+
+            for (int index = 0; index < instancesList.Count; ++index)
+            {
+                UILayerKey uiLayerKey2 = instancesList[index];
+
+                //if (debug)
+                //    Log.LogDebug($"UILayerKey_RefreshTopLayerForEventSystem: Checking '{uiLayerKey2}'");
+
+                if (!(uiLayerKey2.eventSystemLocator.eventSystem != eventSystem) && uiLayerKey2.layer.priority > num)
+                {
+
+                    uiLayerKey1 = uiLayerKey2;
+                    num = uiLayerKey2.layer.priority;
+                }
             }
+
+            if (uiLayerKey1 == layerRepresentation)
+                return;
+
+            if (layerRepresentation)
+            {
+                layerRepresentation.onEndRepresentTopLayer.Invoke();
+                layerRepresentation.representsTopLayer = false;
+                //Log.LogDebug($"UILayerKey_RefreshTopLayerForEventSystem: '{layerRepresentation}' representation ended for '{eventSystem?.name}'");
+            }
+
+            UILayerKey uiLayerKey3 = UILayerKey.topLayerRepresentations[eventSystem] = uiLayerKey1;
+
+            if (!uiLayerKey3)
+                return;
+
+            uiLayerKey3.representsTopLayer = true;
+            uiLayerKey3.onBeginRepresentTopLayer.Invoke();
+            //Log.LogDebug($"UILayerKey_RefreshTopLayerForEventSystem: '{layerRepresentation}' representation began for '{eventSystem?.name}'");
+        }
+        private NetworkUser RuleChoiceController_FindNetworkUser(On.RoR2.UI.RuleChoiceController.orig_FindNetworkUser orig, RuleChoiceController self)
+        {
+            return input.currentEventSystem?.localUser.currentNetworkUser;
+        }
+        private void LoadoutPanelController_UpdateDisplayData(On.RoR2.UI.LoadoutPanelController.orig_UpdateDisplayData orig, RoR2.UI.LoadoutPanelController self)
+        {
+            UserProfile userProfile = input.currentEventSystem?.localUser?.userProfile;
+            NetworkUser currentNetworkUser = input.currentEventSystem?.localUser?.currentNetworkUser;
+
+            BodyIndex bodyIndex = (currentNetworkUser) ? currentNetworkUser.bodyIndexPreference : BodyIndex.None;
+
+            self.SetDisplayData(new RoR2.UI.LoadoutPanelController.DisplayData()
+            {
+                userProfile = userProfile,
+                bodyIndex = bodyIndex
+            });
+        }
+        private void RunCameraManager_Update(On.RoR2.RunCameraManager.orig_Update orig, RunCameraManager self)
+        {
+            bool instance = Stage.instance;
+
+            if (instance)
+            {
+                int index = 0;
+
+                for (int count = CameraRigController.readOnlyInstancesList.Count; index < count; ++index)
+                    if (CameraRigController.readOnlyInstancesList[index].suppressPlayerCameras)
+                        return;
+            }
+
+            if (instance)
+            {
+                int index1 = 0;
+
+                System.Collections.ObjectModel.ReadOnlyCollection<NetworkUser> localPlayersList = NetworkUser.readOnlyLocalPlayersList;
+
+                for (int index2 = 0; index2 < localPlayersList.Count; ++index2)
+                {
+                    NetworkUser networkUser = localPlayersList[index2];
+                    CameraRigController cameraRigController = self.cameras[index1];
+
+                    if (!cameraRigController)
+                    {
+                        cameraRigController = Instantiate<GameObject>(LegacyResourcesAPI.Load<GameObject>("Prefabs/Main Camera")).GetComponent<CameraRigController>();
+                        self.cameras[index1] = cameraRigController;
+                    }
+
+                    cameraRigController.viewer = networkUser;
+
+                    networkUser.cameraRigController = cameraRigController;
+
+                    GameObject networkUserBodyObject = RunCameraManager.GetNetworkUserBodyObject(networkUser);
+
+                    ForceSpectate forceSpectate = InstanceTracker.FirstOrNull<ForceSpectate>();
+
+                    if (forceSpectate)
+                    {
+                        cameraRigController.nextTarget = forceSpectate.target;
+                        cameraRigController.cameraMode = RoR2.CameraModes.CameraModePlayerBasic.spectator;
+                    }
+                    else if (networkUserBodyObject)
+                    {
+                        cameraRigController.nextTarget = networkUserBodyObject;
+                        cameraRigController.cameraMode = RoR2.CameraModes.CameraModePlayerBasic.playerBasic;
+                    }
+                    else if (!cameraRigController.disableSpectating)
+                    {
+                        cameraRigController.cameraMode = RoR2.CameraModes.CameraModePlayerBasic.spectator;
+                        if (!cameraRigController.target)
+                            cameraRigController.nextTarget = CameraRigControllerSpectateControls.GetNextSpectateGameObject(networkUser, null);
+                    }
+                    else
+                        cameraRigController.cameraMode = RoR2.CameraModes.CameraModeNone.instance;
+
+                    ++index1;
+                }
+
+                int index3 = index1;
+
+                for (int index2 = index1; index2 < self.cameras.Length; ++index2)
+                {
+                    ref CameraRigController local = ref self.cameras[index1];
+
+                    if (local != null)
+                    {
+                        if (local)
+                            Destroy(self.cameras[index1].gameObject);
+                        local = null;
+                    }
+                }
+
+                for (int index2 = 0; index2 < index3; ++index2)
+                    self.cameras[index2].viewport = configuration.GetScreenRect(index2);
+            }
+            else
+            {
+                for (int index = 0; index < self.cameras.Length; ++index)
+                {
+                    if (self.cameras[index])
+                        Destroy(self.cameras[index].gameObject);
+                }
+            }
+        }
+        private void LocalCameraEffect_OnUICameraPreCull(On.RoR2.LocalCameraEffect.orig_OnUICameraPreCull orig, UICamera uiCamera)
+        {
+            for (int index = 0; index < LocalCameraEffect.instancesList.Count; index++)
+            {
+                GameObject target = uiCamera.cameraRigController.target;
+                LocalCameraEffect instance = LocalCameraEffect.instancesList[index];
+
+                if (instance.targetCharacter == target && uiCamera.cameraRigController.localUserViewer.cachedBody.healthComponent.alive)
+                    LocalCameraEffect.instancesList[index].effectRoot.SetActive(true);
+                else
+                    LocalCameraEffect.instancesList[index].effectRoot.SetActive(false);
+            }
+        }
+        private void CombatHealthBarViewer_SetLayoutHorizontal(On.RoR2.UI.CombatHealthBarViewer.orig_SetLayoutHorizontal orig, RoR2.UI.CombatHealthBarViewer self)
+        {
+            UICamera uiCamera = self.uiCamera;
+
+            if (!uiCamera)
+                return;
+
+            self.UpdateAllHealthbarPositions(uiCamera.cameraRigController.sceneCam, uiCamera.camera);
         }
         #endregion
 
@@ -586,18 +874,11 @@ namespace XSplitScreen
             CursorOpener[] openers = FindObjectsOfType<CursorOpener>();
 
             foreach (CursorOpener opener in openers)
-            {
-                Log.LogDebug($"XSplitScreen.UpdateCursorStatus: {opener.name} = '{status}'");
                 opener.forceCursorForGamePad = status;
-            }
 
             if (!status)
-            {
                 foreach (MPEventSystem instance in MPEventSystem.instancesList)
-                {
                     instance.SetSelectedGameObject(null);
-                }
-            }
         }
         private bool SetEnabled(bool status, out int localPlayerCount)
         {
@@ -966,7 +1247,7 @@ namespace XSplitScreen
                     return;
 
                 UpdateActiveControllers();
-                Log.LogDebug($"OnControllerDisconnected args: {args != null}");
+
                 onControllerDisconnected.Invoke(args);
             }
             #endregion
@@ -1004,6 +1285,33 @@ namespace XSplitScreen
             #endregion
 
             #region Assignments
+            public Rect GetScreenRect(int playerId)
+            {
+                Assignment? assignment = GetAssignmentByPlayerId(playerId);
+
+                Rect screenRect = new Rect(0, 0, 1, 1);
+
+                if (!assignment.HasValue)
+                    return screenRect;
+
+                screenRect.y = assignment.Value.position.x > 0 ? 0 : 0.5f;
+                screenRect.x = assignment.Value.position.y < 2 ? 0 : 0.5f;
+
+                screenRect.width = assignment.Value.position.y == 1 ? 1 : 0.5f;
+                screenRect.height = assignment.Value.position.x == 1 ? 1 : 0.5f;
+
+                return screenRect;
+            }
+            public Assignment? GetAssignmentByPlayerId(int playerId)
+            {
+                foreach (Assignment assignment in assignments)
+                {
+                    if (assignment.playerId == playerId)
+                        return assignment;
+                }
+
+                return null;
+            }
             public void PushChanges(List<Assignment> changes)
             {
                 foreach(Assignment change in changes)
@@ -1199,8 +1507,6 @@ namespace XSplitScreen
 
             public void UpdateCurrentEventSystem(EventSystem eventSystem)
             {
-                Log.LogDebug($"XSplitScreen.Input.UpdateCurrentEventSystem: EventSystem is null: '{eventSystem == null}'");
-
                 if (eventSystem != null)
                     UpdateCurrentEventSystem(eventSystem as MPEventSystem);
                 else
@@ -1208,7 +1514,6 @@ namespace XSplitScreen
             }
             public void UpdateCurrentEventSystem(MPEventSystem eventSystem)
             {
-                Log.LogDebug($"XSplitScreen.Input.UpdateCurrentEventSystem: MPEventSystem is null: '{eventSystem == null}'");
                 if (currentEventSystem != null)
                     currentEventSystem.SetSelectedGameObject(null);
 

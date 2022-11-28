@@ -247,6 +247,8 @@ namespace XSplitScreen
                     graph.GetNode(assignment.position).nodeData.data.Load(assignment);
                 }
             }
+
+            PrintGraph("Loaded Assignments");
         }
         private void AddPlayer(Screen screen)
         {
