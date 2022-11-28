@@ -47,6 +47,10 @@ namespace XSplitScreen
             if (catchUpFrameCount == 0)
                 display.CatchUpFollowers();
         }
+        public void OnDestroy()
+        {
+            Log.LogDebug($"Display is null = {display is null}");
+        }
         #endregion
 
         #region Initialization & Exit
@@ -56,7 +60,7 @@ namespace XSplitScreen
             InitializeGraph();
             InitializeViewport();
             ToggleListeners(true);
-            PrintGraph("Initialized");
+            //PrintGraph("Initialized");
         }
         private void InitializeReferences()
         {
@@ -135,6 +139,41 @@ namespace XSplitScreen
         #endregion
 
         #region Events
+        public void OnAssignController(Icon icon)
+        {
+            Screen closestScreen = null;
+            float screenDistance = float.MaxValue;
+            float maxDistance = 22f;
+
+            foreach(Screen screen in display.screens)
+            {
+                if (!screen.showPlayerPane)
+                    continue;
+
+                float currentDistance = (icon.cursorFollower.transform.position - screen.transform.position).sqrMagnitude / 1000f;
+
+                if (currentDistance < screenDistance)
+                {
+                    closestScreen = screen;
+                    screenDistance = currentDistance;
+                }
+            }
+
+            var assignment = configuration.GetAssignment(icon.controller);
+
+            if (assignment.HasValue)
+                AssignController(null, assignment.Value.position);
+
+            if (screenDistance <= maxDistance)
+                AssignController(icon.controller, closestScreen.position);
+
+            // TODO reassigning controllers isn't working properly
+            
+        }
+        public void OnBeginDragController()
+        {
+            // show player pane slots
+        }
         public void OnClickScreenAddPlayer(Screen screen)
         {
             Log.LogDebug($"Adding player to '{screen.name}'");
@@ -159,6 +198,30 @@ namespace XSplitScreen
         #endregion
 
         #region Assignments
+        public void AssignController(Controller controller, int2 destination)
+        {
+            if (!graph.ValidPosition(destination))
+                return;
+
+            var nodeData = graph.GetNodeData(destination);
+
+            if (!nodeData.isAssigned)
+                return;
+
+            changeBuffer.Clear();
+
+            nodeData.controller = controller;
+
+            graph.SetNodeData(destination, nodeData);
+
+            PushToBuffer(nodeData);
+            PushToConfiguration();
+            PrintGraph("AssignController");
+        }
+        public void UnassignController(int2 origin)
+        {
+
+        }
         public void SetProfile(int profileId, int2 destination)
         {
             var nodeData = graph.GetNodeData(destination);
@@ -257,7 +320,7 @@ namespace XSplitScreen
         {
             var node = graph.GetNode(origin);
 
-            if(expand)
+            if (expand)
             {
                 ShiftNeighbor(node.neighborUp, node.neighborUpShift);
                 ShiftNeighbor(node.neighborRight, node.neighborRightShift);
@@ -266,10 +329,53 @@ namespace XSplitScreen
             }
             else
             {
-                ShiftNeighbor(node.neighborUpShift, node.neighborUp);
-                ShiftNeighbor(node.neighborRightShift, node.neighborRight);
-                ShiftNeighbor(node.neighborDownShift, node.neighborDown);
-                ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
+                var neighborUpShift = graph.GetNode(node.neighborUpShift);
+                var neighborRightShift = graph.GetNode(node.neighborRightShift);
+                var neighborDownShift = graph.GetNode(node.neighborDownShift);
+                var neighborLeftShift = graph.GetNode(node.neighborLeftShift);
+
+                int lowestPlayerId = int.MaxValue;
+                int2 neighborOrigin = int2.negative;
+                int2 neighborDestination = int2.negative;
+
+                if (neighborUpShift != null)
+                    if (neighborUpShift.nodeData.data.playerId > -1)
+                        if (neighborUpShift.nodeData.data.playerId < lowestPlayerId)
+                        {
+                            neighborOrigin = node.neighborUpShift;
+                            neighborDestination = node.neighborUp;
+                            lowestPlayerId = neighborUpShift.nodeData.data.playerId;
+                        }
+                if (neighborRightShift != null)
+                    if (neighborRightShift.nodeData.data.playerId > -1)
+                        if (neighborRightShift.nodeData.data.playerId < lowestPlayerId)
+                        {
+                            neighborOrigin = node.neighborRightShift;
+                            neighborDestination = node.neighborRight;
+                            lowestPlayerId = neighborRightShift.nodeData.data.playerId;
+                        }
+                if (neighborDownShift != null)
+                    if (neighborDownShift.nodeData.data.playerId > -1)
+                        if (neighborDownShift.nodeData.data.playerId < lowestPlayerId)
+                        {
+                            neighborOrigin = node.neighborDownShift;
+                            neighborDestination = node.neighborDown;
+                            lowestPlayerId = neighborDownShift.nodeData.data.playerId;
+                        }
+                if (neighborLeftShift != null)
+                    if (neighborLeftShift.nodeData.data.playerId > -1)
+                        if (neighborLeftShift.nodeData.data.playerId < lowestPlayerId)
+                        {
+                            neighborOrigin = node.neighborLeftShift;
+                            neighborDestination = node.neighborLeft;
+                            lowestPlayerId = neighborLeftShift.nodeData.data.playerId;
+                        }
+
+                ShiftNeighbor(neighborOrigin, neighborDestination);
+                //ShiftNeighbor(node.neighborUpShift, node.neighborUp);
+                //ShiftNeighbor(node.neighborRightShift, node.neighborRight);
+                //ShiftNeighbor(node.neighborDownShift, node.neighborDown);
+                //ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
             }
         }
         private void ShiftLinear(int2 origin, bool reverse)
@@ -442,13 +548,10 @@ namespace XSplitScreen
         }
         private void PrintGraph(string title = "")
         {
-            // Debug graph assignments (linear shift not working when unassign main in 3 way)
-            // Add event listeners for UI updates
             var data = graph.GetGraph();
 
             string nodeVerticalDivider = " || ";
             string nodeHorizontalDivider = $"--------------------- {title} ---------------------";
-            //string template = "[{0}: {1}({2}, {3})]";
 
             string template = "[{0}: {1}]";
 
@@ -460,7 +563,6 @@ namespace XSplitScreen
             {
                 for (int y = 0; y < data[x].Length; y++)
                 {
-                    //string line = string.Format(template, data[x][y].nodeData.data.position, (data[x][y].nodeData.data.isAssigned ? data[x][y].nodeData.data.controller.name : "none"), data[x][y].nodeData.data.deviceId.ToString(), data[x][y].nodeData.data.isKeyboard.ToString());
                     string id = "x";
 
                     if (data[x][y].nodeData.data.controller != null)
@@ -529,12 +631,37 @@ namespace XSplitScreen
             private Color defaultColor = new Color(1, 1, 1, 0.1f);
             #endregion
 
+            #region Unity Methods
+            public void Update()
+            {
+                for(int e = 0; e < 4; e++)
+                {
+                    if(dividerEnabled[e])
+                        dividers[e].color = Color.Lerp(dividers[e].color, defaultColor, Time.unscaledDeltaTime * dividerFadeSpeed);
+                    else
+                        dividers[e].color = Color.Lerp(dividers[e].color, disabledColor, Time.unscaledDeltaTime * dividerFadeSpeed);
+                }
+
+                if (centerEnabled)
+                    center.color = Color.Lerp(center.color, defaultColor, Time.unscaledDeltaTime * dividerFadeSpeed);
+                else
+                    center.color = Color.Lerp(center.color, disabledColor, Time.unscaledDeltaTime * dividerFadeSpeed);
+            }
+            public void OnDestroy()
+            {
+                ToggleListeners(false);
+
+                instance = null;
+            }
+            #endregion
+
             #region Initialization
             public void Initialize()
             {
                 InitializeReferences();
                 InitializeUI();
                 ToggleListeners(true);
+                //Log.LogDebug($"AssignmentManager.ScreenDisplay: initialized");
             }
             private void InitializeReferences()
             {
@@ -655,28 +782,6 @@ namespace XSplitScreen
                 {
                     configuration?.onConfigurationUpdated?.RemoveListener(OnConfigurationUpdated);
                 }
-            }
-            #endregion
-
-            #region Unity Methods
-            public void Update()
-            {
-                for(int e = 0; e < 4; e++)
-                {
-                    if(dividerEnabled[e])
-                        dividers[e].color = Color.Lerp(dividers[e].color, defaultColor, Time.unscaledDeltaTime * dividerFadeSpeed);
-                    else
-                        dividers[e].color = Color.Lerp(dividers[e].color, disabledColor, Time.unscaledDeltaTime * dividerFadeSpeed);
-                }
-
-                if (centerEnabled)
-                    center.color = Color.Lerp(center.color, defaultColor, Time.unscaledDeltaTime * dividerFadeSpeed);
-                else
-                    center.color = Color.Lerp(center.color, disabledColor, Time.unscaledDeltaTime * dividerFadeSpeed);
-            }
-            public void OnDestroy()
-            {
-                ToggleListeners(false);
             }
             #endregion
 
@@ -827,6 +932,9 @@ namespace XSplitScreen
 
                 foreach (Screen screen in screens)
                 {
+                    if (screen is null)
+                        return;
+
                     screen.addPlayerTargetColor.w = 1;
 
                     foreach (Assignment assignment in configuration.assignments)
@@ -839,7 +947,6 @@ namespace XSplitScreen
                             {
                                 if (assignment.HasController(icon.controller))
                                 {
-                                    Log.LogDebug($"AssignmentManager.UpdateDisplayFollowers: icon = '{icon.name}'");
                                     icon.UpdateDisplayFollower(screen.gameObject.GetComponent<RectTransform>());
                                 }
                             }
@@ -1023,7 +1130,6 @@ namespace XSplitScreen
                 //Log.LogDebug($"PlayerPane.InitializePane: button = '{GameObject.Find("NakedButton (Profile)")}'");
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
-                profileDropdown.onValueChanged.AddListener(OnProfileSelected);
 
                 remove = new GameObject("(XButton) Remove Player", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
                 remove.transform.SetParent(transform);
@@ -1070,10 +1176,12 @@ namespace XSplitScreen
 
                     options.Add(" - Select Profile -");
 
+                    int id = 0;
+
                     foreach (KeyValuePair<string, UserProfile> keyPair in PlatformSystems.saveSystem.loadedUserProfiles)
                     {
-                        //options.Add($"Profile {id}");
-                        //id++;
+                        //options.Add($"Profile {id + 1}");
+                        id++;
                         options.Add(keyPair.Value.name);
                     }
                     // TODO
@@ -1090,7 +1198,14 @@ namespace XSplitScreen
 
                     if (assignment.profileId > -1)
                         profileDropdown.value = assignment.profileId + 1;
+
+                    profileDropdown.onValueChanged.AddListener(OnProfileSelected);
                 }
+
+                if (configuration.localPlayerCount == 1)
+                    remove.enabled = false;
+                else
+                    remove.enabled = true;
             }
             #endregion
 

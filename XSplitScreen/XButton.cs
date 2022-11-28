@@ -11,7 +11,7 @@ using UnityEngine.UI;
 using static UnityEngine.UI.Button;
 
 namespace XSplitScreen
-{
+{ // TODO move to Components
     public class XButton : HGButton
     {
         #region Variables
@@ -120,7 +120,6 @@ namespace XSplitScreen
         }
         #endregion
     }
-
     public class XButtonConverter : MonoBehaviour
     {
         public bool migrateOnClick = false;

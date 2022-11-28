@@ -55,6 +55,11 @@ namespace XSplitScreen
 
             Initialize();
         }
+        public void OnDestroy()
+        {
+            instance = null;
+            ToggleListeners(false);
+        }
         #endregion
 
         #region Initialization & Exit
@@ -130,6 +135,9 @@ namespace XSplitScreen
         }
         private void ToggleListeners(bool status)
         {
+            if (configuration is null)
+                return;
+
             if(status)
             {
                 configuration.onControllerConnected += OnControllerConnected;
@@ -207,7 +215,6 @@ namespace XSplitScreen
         private void CreateIcon(Controller controller)
         {
             Icon icon = Instantiate(iconPrefab).GetComponent<Icon>();
-
             icon.name = $"(Icon) {controller.name}";
             //icon.assignment = assignment;
             icon.transform.SetParent(iconContainer);
@@ -405,6 +412,8 @@ namespace XSplitScreen
                 cursorFollower.smoothMovement = true;
                 
                 button = cursorFollower.GetComponent<XButton>();
+                button.allowAllEventSystems = true;
+                button.allowOutsiderOnPointerUp = true;
                 button.onPointerUp.AddListener(OnPointerUpCursor);
                 button.onClickMono.AddListener(OnClickCursor);
 
@@ -493,8 +502,6 @@ namespace XSplitScreen
                     statusImage.sprite = instance.sprite_Xmark;
                     statusImage.SetNativeSize();
                 }
-
-                Log.LogDebug($"ControllerIconManager.OnHoverStart {name}: {name}");
             }
             public void OnHoverStop(MonoBehaviour mono)
             {
@@ -540,6 +547,11 @@ namespace XSplitScreen
                 cursorFollower.gameObject.SetActive(false);
                 onStopDragIcon.Invoke(this);
                 hasTemporaryAssignment = false;
+
+                if (!displayFollower.enabled)
+                    displayFollower.transform.position = cursorFollower.transform.position;
+
+                AssignmentManager.instance.OnAssignController(this);
             }
             #endregion
         }

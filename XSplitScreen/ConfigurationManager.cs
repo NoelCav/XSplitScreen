@@ -1,5 +1,6 @@
 ﻿using DoDad.Library.AI;
 using RoR2.UI;
+using RoR2.UI.MainMenu;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -73,9 +74,11 @@ namespace XSplitScreen
 
             public RectTransform followerContainer { get; private set; }
             public ControllerIconManager controllerIcons { get; private set; }
-            public AssignmentManager graphManager { get; private set; }
+            public AssignmentManager assignmentManager { get; private set; }
 
             public static int currentDisplay { get; private set; }
+
+            private RectTransform toggleEnableMod;
             #endregion
 
             #region Base Methods
@@ -101,6 +104,11 @@ namespace XSplitScreen
             {
                 page.gameObject.SetActive(false);
             }
+            public override void Exit()
+            {
+                base.Exit();
+                Destroy(page.gameObject);
+            }
             #endregion
 
             #region Initialization & Exit
@@ -118,16 +126,15 @@ namespace XSplitScreen
 
                 controllerIcons = gameObject.AddComponent<ControllerIconManager>();
 
-                graphManager = new GameObject("Graph Manager", typeof(RectTransform), typeof(UnityEngine.UI.LayoutElement)).AddComponent<AssignmentManager>();
+                assignmentManager = new GameObject("Assignment Manager", typeof(RectTransform), typeof(UnityEngine.UI.LayoutElement)).AddComponent<AssignmentManager>();
 
                 //var element = graphManager.GetComponent<UnityEngine.UI.LayoutElement>();
 
-                graphManager.transform.SetParent(page);
-                graphManager.transform.localScale = Vector3.one;
-                graphManager.transform.localPosition = Vector3.zero;
-                graphManager.transform.SetSiblingIndex(4);
-                graphManager.Initialize();
-                Log.LogDebug($"Graph Manager created");
+                assignmentManager.transform.SetParent(page);
+                assignmentManager.transform.localScale = Vector3.one;
+                assignmentManager.transform.localPosition = Vector3.zero;
+                assignmentManager.transform.SetSiblingIndex(4);
+                assignmentManager.Initialize();
 
                 Destroy(page.GetChild(5).gameObject);
 
@@ -135,8 +142,72 @@ namespace XSplitScreen
 
                 //Destroy(graphManager.GetComponent<UserProfileListController>());
                 //Destroy(page.GetComponentInChildren<UserProfileListController>().gameObject);
+                GameObject togglePrefab = MainMenuController.instance.multiplayerMenuScreen.GetComponentInChildren<MPToggle>(true).gameObject;
 
+                toggleEnableMod = new GameObject($"(Toggle) Enable Splitscreen", typeof(RectTransform)).GetComponent<RectTransform>();
+                toggleEnableMod.transform.SetParent(page.GetChild(6));
+                toggleEnableMod.transform.localPosition = Vector3.zero;
+                toggleEnableMod.transform.localScale = Vector3.one;
+
+                GameObject toggle = Instantiate(togglePrefab, toggleEnableMod.transform);
+                toggle.name = "(Toggle) Control";
+                toggle.transform.localPosition = new Vector3(-60,0,0);
+                toggle.transform.localScale = Vector3.one * 1.5f;
+                toggle.SetActive(true);
+                toggle.GetComponent<MPToggle>().isOn = XSplitScreen.configuration.enabled;
+                toggle.GetComponent<MPToggle>().onValueChanged.AddListener(OnToggleEnableMod);
+
+                GameObject label = Instantiate(togglePrefab.transform.parent.GetChild(1).gameObject);
+                label.transform.SetParent(toggleEnableMod.transform);
+                label.transform.localPosition = Vector3.zero;
+                label.transform.localScale = Vector3.one;
+                label.name = "(TextMesh) Label";
+
+                UpdateToggle(XSplitScreen.configuration.enabled);
                 page.gameObject.SetActive(false);
+            }
+            #endregion
+
+            #region Event Listeners
+            public void OnToggleEnableMod(bool status)
+            {
+                bool success = XSplitScreen.configuration.SetEnabled(status);
+
+                UpdateToggle(XSplitScreen.configuration.enabled);
+
+                if (success)
+                {
+                    Log.LogDebug($"Activated");
+                }
+                else
+                {
+                    Log.LogDebug($"Not activated");
+                }
+
+                // if SetEnabled is false then the configuration is invalid
+                // ping incomplete UI elements
+            }
+
+            #endregion
+
+            #region UI
+            private void UpdateToggle(bool status)
+            {
+                toggleEnableMod.transform.GetChild(0).GetComponent<MPToggle>().onValueChanged.RemoveAllListeners();
+                toggleEnableMod.transform.GetChild(0).GetComponent<MPToggle>().isOn = status;
+                toggleEnableMod.transform.GetChild(0).GetComponent<MPToggle>().onValueChanged.AddListener(OnToggleEnableMod);
+
+                LanguageTextMeshController controllerEnableMod = toggleEnableMod.transform.GetChild(1).GetComponent<LanguageTextMeshController>();
+
+                if (status)
+                {
+                    controllerEnableMod.token = XSplitScreen.Language.MSG_SPLITSCREEN_DISABLE_TOKEN;
+                }
+                else
+                {
+                    controllerEnableMod.token = XSplitScreen.Language.MSG_SPLITSCREEN_ENABLE_TOKEN;
+                }
+
             }
             #endregion
         }

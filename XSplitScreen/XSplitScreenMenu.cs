@@ -22,6 +22,8 @@ namespace XSplitScreen
         public UILayerKey layerKey { get; private set; }
 
         private bool convertButtons = true;
+        private int delay = 5;
+        private int frameCount = 0;
         #endregion
 
         #region Unity Methods
@@ -39,7 +41,7 @@ namespace XSplitScreen
                 instance.SetSelectedGameObject(null);
             }
         }
-        public new void Update()
+        public void Update()
         {
             base.Update();
 
@@ -69,6 +71,7 @@ namespace XSplitScreen
             {
                 opener.forceCursorForGamePad = false;
             }
+            Log.LogDebug($"XSplitScreenMenu.OnDisable: forceCursor set to false");
         }
         #endregion
 
@@ -302,8 +305,8 @@ namespace XSplitScreen
         private XButtonConverter CreateButton(string name = "XButton")
         {
             GameObject template = GameObject.Find("GenericMenuButton (Singleplayer)");
-
-            GameObject newXButton = Instantiate(template);
+            Log.LogDebug($"XSplitScreenMenu.CreateButton: template is null = '{template is null}'");
+            GameObject newXButton = Instantiate(XSplitScreen.buttonTemplate);
 
             newXButton.name = $"XButton ({name})";
 

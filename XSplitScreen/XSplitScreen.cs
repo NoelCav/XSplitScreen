@@ -22,6 +22,9 @@ using UnityEngine.SceneManagement;
 using RoR2.UI;
 using RoR2.UI.SkinControllers;
 using DoDad.Library.Graph;
+using UnityEngine.EventSystems;
+using Rewired.Integration.UnityUI;
+using Rewired.UI;
 
 namespace XSplitScreen
 {
@@ -41,13 +44,21 @@ namespace XSplitScreen
         public static Configuration configuration { get; private set; }
         public static XSplitScreen instance { get; private set; }
         public static AssetBundle assets { get; private set; }
+        public static Input input { get; private set; }
+        public static GameObject buttonTemplate { get; private set; }
 
         private static readonly bool developerMode = true;
 
+        private static Coroutine WaitForMenuRoutine;
+        private static Coroutine WaitForRewiredRoutine;
+
         private RectTransform titleButton;
         private RectTransform menuContainer;
-        
+
+        private bool readyToInitializePlugin;
         private bool readyToCreateUI;
+
+        private int createUIFrameBuffer = 5;
         #endregion
 
         #region Unity Methods
@@ -56,19 +67,38 @@ namespace XSplitScreen
             if (instance)
                 Destroy(this);
 
-            Initialize();
+            WaitForRewiredRoutine = StartCoroutine(WaitForRewired());
+            //Initialize(); // Moved to LateUpdate() 11/27/22 - Scene switch bug
         }
         public void OnDestroy()
         {
             CleanupReferences();
+
+            int c;
+
+            SetEnabled(false, out c);
         }
-        public void Update()
+        public void LateUpdate()
         {
-            if(readyToCreateUI)
+            if (readyToCreateUI)
             {
-                CreateUI();
-                readyToCreateUI = false;
+                if (MainMenuController.instance.currentMenuScreen.Equals(MainMenuController.instance.titleMenuScreen))
+                {
+                    createUIFrameBuffer--;
+
+                    if (createUIFrameBuffer < 1)
+                    {
+                        if (CreateUI())
+                        {
+                            readyToCreateUI = false;
+                            createUIFrameBuffer = 5;
+                        }
+                    }
+                }
             }
+
+            if (readyToInitializePlugin)
+                Initialize();
         }
         #endregion
 
@@ -76,6 +106,7 @@ namespace XSplitScreen
         private void Initialize()
         {
             instance = this;
+            readyToInitializePlugin = false;
 
             Log.Init(Logger);
             CommandHelper.AddToConsoleWhenReady();
@@ -83,11 +114,18 @@ namespace XSplitScreen
             InitializeLanguage();
             InitializeReferences();
 
-            TogglePersistentHooks(true);
-            ToggleUIHooks(true);
+            TogglePersistentListeners(true);
+            //ToggleUIListeners(true); // Disabled 11/27/22 - Scene switch bug
 
             if (developerMode)
-                ScreenOnEnter();
+            {
+                if (WaitForMenuRoutine != null)
+                    StopCoroutine(WaitForMenuRoutine);
+
+                WaitForMenuRoutine = StartCoroutine(WaitForMenu());
+            }
+
+            // crashing when reconnect controller on scene switch
         }
         private void InitializeLanguage()
         {
@@ -113,16 +151,17 @@ namespace XSplitScreen
                     using (Stream manifestResourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("XSplitScreen.xsplitscreenbundle"))
                         assets = AssetBundle.LoadFromStream(manifestResourceStream);
                 }
-                catch(Exception e)
+                catch (Exception e)
                 {
                     Log.LogError(e);
                 }
             }
 
             if (configuration is null)
-            {
                 configuration = new Configuration(Config);
-            }
+
+            if (input is null)
+                input = new Input();
         }
         private void CleanupReferences()
         {
@@ -134,33 +173,40 @@ namespace XSplitScreen
 
             instance = null;
 
-            TogglePersistentHooks(false);
-            ToggleUIHooks(false);
+            TogglePersistentListeners(false);
+            //ToggleUIListeners(false); // Disabled 11/27/22 - Scene switch bug
 
-            if(titleButton != null)
+            if (titleButton != null)
                 Destroy(titleButton?.gameObject);
 
-            if(menuContainer != null)
+            if (menuContainer != null)
                 Destroy(menuContainer?.gameObject);
+
+            if (buttonTemplate != null)
+                Destroy(buttonTemplate);
         }
         #endregion
 
-        #region Hooks
-        private void ToggleUIHooks(bool status)
+        #region Hooks & Event Handlers
+        private void ToggleUIListeners(bool status)
         {
-            if(status)
+            if (MainMenuController.instance?.titleMenuScreen is null)
+                return;
+
+            if (status)
             {
-                MainMenuController.instance.currentMenuScreen.onEnter.AddListener(ScreenOnEnter);
-                MainMenuController.instance.currentMenuScreen.onExit.AddListener(ScreenOnExit);
+                MainMenuController.instance.titleMenuScreen.onEnter.AddListener(ScreenOnEnter);
+                MainMenuController.instance.titleMenuScreen.onExit.AddListener(ScreenOnExit);
             }
             else
             {
-                MainMenuController.instance.currentMenuScreen.onEnter.RemoveListener(ScreenOnEnter);
-                MainMenuController.instance.currentMenuScreen.onExit.RemoveListener(ScreenOnExit);
+                MainMenuController.instance.titleMenuScreen.onEnter.RemoveListener(ScreenOnEnter);
+                MainMenuController.instance.titleMenuScreen.onExit.RemoveListener(ScreenOnExit);
             }
         }
+
         #region Persistent
-        private void TogglePersistentHooks(bool status)
+        private void TogglePersistentListeners(bool status)
         {
             if (status)
             {
@@ -171,44 +217,327 @@ namespace XSplitScreen
                 SceneManager.activeSceneChanged -= ActiveSceneChanged;
             }
         }
+        private void ActiveSceneChanged(Scene previous, Scene current)
+        {
+            Log.LogDebug($"XSplitScreen.ActiveSceneChanged");
+
+            if (string.Compare(current.name, "title") == 0)
+            {
+                if (WaitForMenuRoutine != null)
+                    StopCoroutine(WaitForMenuRoutine);
+
+                WaitForMenuRoutine = StartCoroutine(WaitForMenu());
+                Log.LogDebug($"XSplitScreen.ActiveSceneChanged: Started coroutine");
+                //ToggleUIListeners(true); // as below
+                //ScreenOnEnter(); // Disabled 11/27/22 - Scene switch bug
+            }
+            else
+            {
+                //ToggleUIListeners(false); // as below
+                //ScreenOnExit(); // Disabled 11/27/22 - Scene switch bug
+            }
+        }
         private void ScreenOnEnter()
         {
-            StartCoroutine(WaitForMenu());
+            Log.LogDebug($"XSplitScreen.ScreenOnEnter");
+
+            //if (WaitForMenu != null) // Disabled 11/27/22 - Scene switch bug
+            //    StopCoroutine(WaitForMenuRoutine); // Disabled 11/27/22 - Scene switch bug
+
+            //WaitForMenuRoutine = StartCoroutine(WaitForMenu()); // Disabled 11/27/22 - Scene switch bug
         }
         private void ScreenOnExit()
         {
             Log.LogDebug("ScreenOnExit");
         }
-        private void ActiveSceneChanged(Scene previous, Scene current)
+        #endregion
+
+        #region Splitscreen
+        private void ToggleSplitScreenHooks(bool status)
         {
-            if (string.Compare(current.name, "title") == 0)
+            input.UpdateCurrentEventSystem(LocalUserManager.GetFirstLocalUser().eventSystem);
+
+            if (status)
             {
-                ToggleUIHooks(true);
-                ScreenOnEnter();
+                On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
+                On.RoR2.UI.MPButton.Update += MPButton_Update;
+                On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick;
+                On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
+                On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject;
+                On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon;
             }
             else
             {
-                ToggleUIHooks(false);
-                ScreenOnExit();
+                On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
+                On.RoR2.UI.MPButton.Update -= MPButton_Update;
+                On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
+                On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
+                On.RoR2.UI.SurvivorIconController.Update -= SurvivorIconController_Update;
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
+                On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
             }
         }
+
+        #region UI Hooks
+        private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
+        {
+            orig(self);
+            self._forceCursorForGamepad = configuration is null ? false : configuration.enabled;
+        }
+        private void MPButton_Update(On.RoR2.UI.MPButton.orig_Update orig, RoR2.UI.MPButton self)
+        {
+            if (!self.eventSystem || self.eventSystem.player == null)
+                return;
+
+            for (int e = 1; e < MPEventSystem.readOnlyInstancesList.Count; e++)
+            {
+                MPEventSystem eventSystem = MPEventSystem.readOnlyInstancesList[e];
+
+                if (!eventSystem)
+                    continue;
+
+                if (eventSystem.currentSelectedGameObject == self.gameObject &&
+                    (eventSystem.player.GetButtonDown(4) || eventSystem.player.GetButtonDown(14)))
+                {
+                    input.UpdateCurrentEventSystem(eventSystem);
+                    self.InvokeClick();
+                }
+            }
+        }
+        private void MPButton_OnPointerClick(On.RoR2.UI.MPButton.orig_OnPointerClick orig, RoR2.UI.MPButton self, PointerEventData eventData)
+        {
+            input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
+            orig(self, eventData);
+        }
+        private bool MPButton_InputModuleIsAllowed(On.RoR2.UI.MPButton.orig_InputModuleIsAllowed orig, RoR2.UI.MPButton self, BaseInputModule inputModule)
+        {
+            return true;
+
+            if (self.allowAllEventSystems)
+                return true;
+
+            if (self.eventSystem)
+            {
+                if (self.eventSystem == input.currentEventSystem)
+                    return true;
+            }
+
+            return false;
+        }
+        private object MPInputModule_GetMousePointerEventData(On.RoR2.UI.MPInputModule.orig_GetMousePointerEventData orig, RoR2.UI.MPInputModule self, int playerId, int mouseIndex)
+        {
+            IMouseInputSource mouseInputSource = self.GetMouseInputSource(playerId, mouseIndex);
+
+            if (mouseInputSource == null)
+                return null;
+
+            PlayerPointerEventData data1;
+
+            // If pointer event data was created? or already exists?
+            int num = self.GetPointerData(playerId, mouseIndex, -1, out data1, true, PointerEventType.Mouse) ? 1 : 0;
+
+            data1.Reset();
+
+            // if pointer data exists, set mouse position to current position? to calculate delta later I think
+            if (num != 0)
+                data1.position = self.input.mousePosition;
+
+            Vector2 mousePosition = self.input.mousePosition;
+
+            if (mouseInputSource.locked || !mouseInputSource.enabled)
+            {
+                data1.position = new Vector2(-1f, -1f);
+                data1.delta = Vector2.zero;
+            }
+            else
+            {
+                data1.delta = mousePosition - data1.position;
+                data1.position = mousePosition;
+            }
+
+            data1.scrollDelta = mouseInputSource.wheelDelta;
+            data1.button = PointerEventData.InputButton.Left;
+
+            // Raycast all objects from current position and select the first one
+            self.eventSystem.RaycastAll(data1, self.m_RaycastResultCache);
+            RaycastResult firstRaycast = BaseInputModule.FindFirstRaycast(self.m_RaycastResultCache);
+
+            GameObject focusObject = null;
+            
+            int priority = 0;
+
+            bool logOutput = false;
+
+            foreach (RaycastResult raycast in self.m_RaycastResultCache)
+            {
+                if (self.useCursor)
+                {
+                    if (raycast.gameObject != null)
+                    {
+                        TMPro.TMP_InputField input = raycast.gameObject.GetComponent<TMPro.TMP_InputField>();
+                        MPButton mpButton = raycast.gameObject.GetComponent<RoR2.UI.MPButton>();
+                        HGButton hgButton = raycast.gameObject.GetComponent<HGButton>();
+
+                        if (input != null && priority < 3)
+                        {
+                            if(logOutput)
+                                Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
+
+                            focusObject = raycast.gameObject;
+                            priority = 3;
+                        }
+                        if (hgButton != null)
+                        {
+                            if (priority < 2)
+                            {
+                                if (logOutput)
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
+
+                                focusObject = raycast.gameObject;
+                                priority = 2;
+                            }
+                        }
+                        if (mpButton != null)
+                        {
+                            if (priority < 1)
+                            {
+                                if (logOutput)
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
+
+                                focusObject = raycast.gameObject;
+                                priority = 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if (self.eventSystem.currentSelectedGameObject != null && focusObject == null)
+                if (self.eventSystem.currentSelectedGameObject.GetComponent<TMPro.TMP_InputField>() != null)
+                    focusObject = self.eventSystem.currentSelectedGameObject;
+
+            
+            self.eventSystem.SetSelectedGameObject(focusObject);
+
+            data1.pointerCurrentRaycast = firstRaycast;
+            self.UpdateHover(self.m_RaycastResultCache);
+            self.m_RaycastResultCache.Clear();
+
+            PlayerPointerEventData data2;
+            self.GetPointerData(playerId, mouseIndex, -2, out data2, true, PointerEventType.Mouse);
+            self.CopyFromTo(data1, data2);
+
+            data2.button = PointerEventData.InputButton.Right;
+
+            PlayerPointerEventData data3;
+            self.GetPointerData(playerId, mouseIndex, -3, out data3, true, PointerEventType.Mouse);
+            self.CopyFromTo(data1, data3);
+            data3.button = PointerEventData.InputButton.Middle;
+
+            for (int index = 3; index < mouseInputSource.buttonCount; index++)
+            {
+                PlayerPointerEventData data4;
+                self.GetPointerData(playerId, mouseIndex, index - 2147483520, out data4, true, PointerEventType.Mouse);
+                self.CopyFromTo(data1, data4);
+                data4.button = ~PointerEventData.InputButton.Left;
+            }
+
+            self.m_MouseState.SetButtonState(0, self.StateForMouseButton(playerId, mouseIndex, 0), data1);
+            self.m_MouseState.SetButtonState(1, self.StateForMouseButton(playerId, mouseIndex, 1), data2);
+            self.m_MouseState.SetButtonState(2, self.StateForMouseButton(playerId, mouseIndex, 2), data3);
+
+            for (int index = 3; index < mouseInputSource.buttonCount; index++)
+            {
+                PlayerPointerEventData data4;
+                self.GetPointerData(playerId, mouseIndex, index - 2147483520, out data4, false, PointerEventType.Mouse);
+                self.m_MouseState.SetButtonState(index, self.StateForMouseButton(playerId, mouseIndex, index), data4);
+            }
+
+            return self.m_MouseState;
+        }
+        private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
+        {
+            // Fix debug spam
+            if (EventSystem.current == null)
+                return;
+
+            MPEventSystem system = EventSystem.current as MPEventSystem;
+
+            if (system == null)
+                return;
+
+            orig(self);
+        }
+        private void MPEventSystem_ValidateCurrentSelectedGameobject(On.RoR2.UI.MPEventSystem.orig_ValidateCurrentSelectedGameobject orig, RoR2.UI.MPEventSystem self)
+        {
+            if (!self.currentSelectedGameObject)
+                return;
+
+            MPButton component = self.currentSelectedGameObject.GetComponent<MPButton>();
+
+            if (!component || component.CanBeSelected())
+                return;
+
+            self.SetSelectedGameObject(null);
+        }
+        private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
+        {
+            Log.LogDebug($"XSplitScreen.CharacterSelectBarController_PickIcon");
+
+            if (self.pickedIcon == newPickedIcon)
+                return;
+
+            self.pickedIcon = newPickedIcon;
+
+            CharacterSelectBarController.SurvivorPickInfoUnityEvent onSurvivorPicked = self.onSurvivorPicked;
+            if (onSurvivorPicked == null)
+                return;
+
+            onSurvivorPicked.Invoke(new CharacterSelectBarController.SurvivorPickInfo()
+            {
+                localUser = input.currentEventSystem.localUser,
+                pickedSurvivor = newPickedIcon.survivorDef
+            });
+        }
+        private void ViewablesCatalog_AddNodeToRoot(On.RoR2.ViewablesCatalog.orig_AddNodeToRoot orig, ViewablesCatalog.Node node)
+        {
+            node.SetParent(ViewablesCatalog.rootNode);
+            foreach (ViewablesCatalog.Node descendant in node.Descendants())
+            {
+                if (!ViewablesCatalog.fullNameToNodeMap.ContainsKey(descendant.fullName))
+                    ViewablesCatalog.fullNameToNodeMap.Add(descendant.fullName, descendant);
+            }
+        }
+        #endregion
+
         #endregion
 
         #endregion
 
         #region UI
-        private void CreateUI()
+        private bool CreateUI()
         {
-            Log.LogInfo($"Creating UI");
-            CreateMainMenuButton();
-            CreateMenu();
+            Log.LogInfo($"XSplitScreen.CreateUI: Attempting to create UI");
+
+            if (CreateMainMenuButton())
+            {
+                CreateMenu();
+                return true;
+            }
+
+            return false;
         }
-        private void CreateMainMenuButton()
+        private bool CreateMainMenuButton()
         {
             if (titleButton != null)
-                return;
+                return false;
 
             GameObject template = GameObject.Find("GenericMenuButton (Singleplayer)");
+
+            if (template is null)
+                return false;
 
             GameObject newXButton = Instantiate(template);
 
@@ -226,6 +555,8 @@ namespace XSplitScreen
             converter.token = Language.MSG_TITLE_BUTTON_TOKEN;
 
             titleButton = newXButton.GetComponent<RectTransform>();
+
+            return true;
         }
         private void CreateMenu()
         {
@@ -250,12 +581,152 @@ namespace XSplitScreen
         #endregion
 
         #region Splitscreen Logic
+        public void UpdateCursorStatus(bool status)
+        {
+            CursorOpener[] openers = FindObjectsOfType<CursorOpener>();
 
+            foreach (CursorOpener opener in openers)
+            {
+                Log.LogDebug($"XSplitScreen.UpdateCursorStatus: {opener.name} = '{status}'");
+                opener.forceCursorForGamePad = status;
+            }
+
+            if (!status)
+            {
+                foreach (MPEventSystem instance in MPEventSystem.instancesList)
+                {
+                    instance.SetSelectedGameObject(null);
+                }
+            }
+        }
+        private bool SetEnabled(bool status, out int localPlayerCount)
+        {
+            if (configuration != null)
+                localPlayerCount = configuration.localPlayerCount;
+            else
+                localPlayerCount = 0;
+
+            UserProfile[] profiles = new UserProfile[PlatformSystems.saveSystem.loadedUserProfiles.Values.Count];
+            PlatformSystems.saveSystem.loadedUserProfiles.Values.CopyTo(profiles, 0);
+
+            if (profiles.Length == 0)
+                return false;
+
+            if (!LogInUsers(profiles, status, out localPlayerCount))
+                return false;
+
+            AssignControllers(status);
+
+            ToggleSplitScreenHooks(status);
+            
+            // Hook everything 
+            // MPButton: maybe adding a component will fix it? will XButton function as a child?
+            return true;
+        }
+        private bool LogInUsers(UserProfile[] profiles, bool status, out int localPlayerCount)
+        {
+            List<LocalUserManager.LocalUserInitializationInfo> localUsers = new List<LocalUserManager.LocalUserInitializationInfo>();
+
+            localPlayerCount = 1;
+
+            if (!status)
+            {
+                localUsers.Add(new LocalUserManager.LocalUserInitializationInfo()
+                {
+                    player = ReInput.players.GetPlayer(0),
+                    profile = PlatformSystems.saveSystem.loadedUserProfiles.First().Value,
+                });
+            }
+            else
+            {
+                foreach (Assignment assignment in configuration.assignments)
+                {
+                    if (assignment.isAssigned)
+                    {
+                        localUsers.Add(new LocalUserManager.LocalUserInitializationInfo()
+                        {
+                            player = ReInput.players.GetPlayer(assignment.playerId + 1),
+                            profile = profiles[assignment.profileId],
+                        });
+                    }
+                }
+            }
+
+            try
+            {
+                // Silence log spam
+                On.RoR2.ViewablesCatalog.AddNodeToRoot += ViewablesCatalog_AddNodeToRoot;
+
+                LocalUserManager.ClearUsers();
+                LocalUserManager.SetLocalUsers(localUsers.ToArray());
+
+                On.RoR2.ViewablesCatalog.AddNodeToRoot -= ViewablesCatalog_AddNodeToRoot;
+
+                localPlayerCount = localUsers.Count;
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning(e);
+
+                if(localUsers.Count > 1)
+                    LogInUsers(null, false, out localPlayerCount);
+
+                return false;
+            }
+        }
+        private void AssignControllers(bool status)
+        {
+            if (!status || configuration is null)
+            {
+                Log.LogDebug($"XSplitScreen.AssignControllers: Auto Assigned");
+                ReInput.controllers.AutoAssignJoysticks();
+                return;
+            }
+
+            foreach (Assignment assignment in configuration.assignments)
+            {
+                if (!assignment.isAssigned)
+                    continue;
+
+                int playerIndex = assignment.playerId;
+                LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.ClearAllControllers();
+
+                if (assignment.controller.type == ControllerType.Keyboard)
+                {
+                    foreach (Controller controller in ReInput.controllers.Controllers)
+                    {
+                        if (controller.type == ControllerType.Mouse)
+                        {
+                            Log.LogDebug($"Assigning mouse");
+                            LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.AddController(controller, false);
+                            break;
+                        }
+                    }
+                }
+
+                LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.AddController(assignment.controller, false);
+                Log.LogDebug($"XSplitScreen.AssignControllers: Assigning '{assignment.controller.name}' to playerIndex '{playerIndex}'");
+            }
+        }
         #endregion
 
         #region Coroutines
+        IEnumerator WaitForRewired()
+        {
+            while (!ReInput.initialized)
+                yield return null;
+
+            readyToInitializePlugin = true;
+
+            yield return null;
+        }
         IEnumerator WaitForMenu()
         {
+            while (MainMenuController.instance == null)
+                yield return null;
+
             GameObject singleplayerButton = null;
 
             while(singleplayerButton is null)
@@ -263,6 +734,9 @@ namespace XSplitScreen
                 singleplayerButton = GameObject.Find("GenericMenuButton (Singleplayer)");
                 yield return null;
             }
+
+            buttonTemplate = Instantiate(singleplayerButton);
+            buttonTemplate.SetActive(false);
 
             Log.LogDebug($"WaitForMenu done");
             readyToCreateUI = true;
@@ -279,6 +753,8 @@ namespace XSplitScreen
         {
             #region Variables
             public UnityEvent onConfigurationUpdated { get; private set; }
+            public UnityEvent onSplitScreenEnabled { get; private set; }
+            public UnityEvent onSplitScreenDisabled { get; private set; }
 
             public Action<ControllerStatusChangedEventArgs> onControllerConnected;
             public Action<ControllerStatusChangedEventArgs> onControllerDisconnected;
@@ -288,12 +764,12 @@ namespace XSplitScreen
 
             public int2 graphDimensions { get; private set; }
 
-            public bool enabled = false;
+            public bool enabled { get; private set; }
 
             public int localPlayerCount { get; private set; }
             public readonly int maxLocalPlayers = 4;
 
-            private bool devMode = true;
+            private bool developerMode = false;
 
             private List<Preference> preferences;
 
@@ -317,7 +793,7 @@ namespace XSplitScreen
             {
                 ToggleListeners(false);
 
-                if(devMode)
+                if(developerMode)
                     ClearSave();
 
                 Save();
@@ -339,6 +815,8 @@ namespace XSplitScreen
                 preferences = new List<Preference>();
 
                 onConfigurationUpdated = new UnityEvent();
+                onSplitScreenEnabled = new UnityEvent();
+                onSplitScreenDisabled = new UnityEvent();
                 //onAssignmentLoaded = new AssignmentEvent();
                 //onAssignmentUnloaded = new AssignmentEvent();
                 //onAssignmentUpdate = new AssignmentEvent();
@@ -451,11 +929,15 @@ namespace XSplitScreen
                 {
                     ReInput.ControllerConnectedEvent += OnControllerConnected;
                     ReInput.ControllerDisconnectedEvent += OnControllerDisconnected;
+                    onSplitScreenEnabled.AddListener(OnSplitScreenEnabled);
+                    onSplitScreenDisabled.AddListener(OnSplitScreenDisabled);
                 }
                 else
                 {
                     ReInput.ControllerConnectedEvent -= OnControllerConnected;
                     ReInput.ControllerDisconnectedEvent -= OnControllerDisconnected;
+                    onSplitScreenEnabled.RemoveListener(OnSplitScreenEnabled);
+                    onSplitScreenDisabled.RemoveListener(OnSplitScreenDisabled);
                 }
             }
             #endregion
@@ -585,6 +1067,70 @@ namespace XSplitScreen
 
                 onConfigurationUpdated.Invoke();
             }
+            private bool VerifyConfiguration()
+            {
+                if (PlatformSystems.saveSystem.loadedUserProfiles.Values.Count == 0)
+                    return false;
+
+                foreach (Assignment assignment in configuration.assignments)
+                {
+                    if (assignment.isAssigned)
+                    {
+                        if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count
+                            || assignment.controller == null || assignment.displayId == -1 ||
+                            assignment.displayId >= Display.displays.Length)
+                            return false;
+                    }
+                }
+
+                return true;
+            }
+            #endregion
+
+            #region Splitscreen
+            public bool SetEnabled(bool status)
+            {
+                if (status)
+                {
+                    if (VerifyConfiguration())
+                    {
+                        int playerCount;
+
+                        if (instance.SetEnabled(status, out playerCount))
+                        {
+                            localPlayerCount = playerCount;
+                            enabled = localPlayerCount > 1 ? true : false;
+
+                            if (enabled)
+                                onSplitScreenEnabled.Invoke();
+                            else
+                                onSplitScreenDisabled.Invoke();
+
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    int c;
+
+                    instance.SetEnabled(false, out c);
+                    localPlayerCount = 1;
+                    enabled = false;
+                    onSplitScreenDisabled.Invoke();
+                }
+
+                return false;
+            }
+            private void OnSplitScreenEnabled()
+            {
+                instance.UpdateCursorStatus(true);
+            }
+            private void OnSplitScreenDisabled()
+            {
+                instance.UpdateCursorStatus(false);
+            }
+            
             #endregion
 
             #region Definitions
@@ -646,6 +1192,30 @@ namespace XSplitScreen
             }
             #endregion
         }
+        public class Input
+        {
+            public MPEventSystem currentEventSystem { get; private set; }
+            public bool clickedThisFrame;
+
+            public void UpdateCurrentEventSystem(EventSystem eventSystem)
+            {
+                Log.LogDebug($"XSplitScreen.Input.UpdateCurrentEventSystem: EventSystem is null: '{eventSystem == null}'");
+
+                if (eventSystem != null)
+                    UpdateCurrentEventSystem(eventSystem as MPEventSystem);
+                else
+                    currentEventSystem = null;
+            }
+            public void UpdateCurrentEventSystem(MPEventSystem eventSystem)
+            {
+                Log.LogDebug($"XSplitScreen.Input.UpdateCurrentEventSystem: MPEventSystem is null: '{eventSystem == null}'");
+                if (currentEventSystem != null)
+                    currentEventSystem.SetSelectedGameObject(null);
+
+                currentEventSystem = eventSystem;
+            }
+        }
+
         public struct Preference
         {
             public Color color;
