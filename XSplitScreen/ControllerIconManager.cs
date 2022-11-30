@@ -339,7 +339,6 @@ namespace XSplitScreen
             }
             public void OnDestroy()
             {
-                Log.LogDebug($"Destroying '{name}'");
                 Destroy(displayFollower.gameObject);
                 Destroy(iconFollower.gameObject);
                 Destroy(cursorFollower.gameObject);

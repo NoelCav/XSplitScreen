@@ -258,7 +258,6 @@ namespace XSplitScreen
         #region XButton Listeners
         public void OnClickRequestMenu(MonoBehaviour mono)
         {
-            Log.LogDebug("Requesting menu");
             MainMenuController.instance.SetDesiredMenuScreen(MainMenuController.instance.titleMenuScreen);
         }
         private static void OnClickOpenDebugFolder(MonoBehaviour mono)

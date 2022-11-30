@@ -960,7 +960,6 @@ namespace XSplitScreen
             {
                 foreach(Icon icon in ControllerIconManager.instance.icons)
                 {
-                    Log.LogDebug($"'{icon.iconFollower.name}' catching up to '{icon.iconFollower.target?.name}' at '{icon.iconFollower.targetPosition}'");
                     icon.displayFollower.CatchUp();
                     icon.iconFollower.CatchUp(); // TODO meaningless call?
                 }

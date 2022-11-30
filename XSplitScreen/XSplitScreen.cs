@@ -25,6 +25,7 @@ using DoDad.Library.Graph;
 using UnityEngine.EventSystems;
 using Rewired.Integration.UnityUI;
 using Rewired.UI;
+using System.Globalization;
 
 namespace XSplitScreen
 {
@@ -263,6 +264,9 @@ namespace XSplitScreen
             {
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
 
+                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed += MPControlHelper_InputModuleIsAllowed;
+                On.RoR2.UI.MPControlHelper.OnPointerClick += MPControlHelper_OnPointerClick;
+
                 On.RoR2.UI.MPButton.Update += MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
@@ -293,6 +297,17 @@ namespace XSplitScreen
 
                 On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal;
 
+                On.RoR2.NetworkUser.UpdateUserName += NetworkUser_UpdateUserName;
+                On.RoR2.NetworkUser.GetNetworkPlayerName += NetworkUser_GetNetworkPlayerName;
+
+                On.RoR2.PlayerCharacterMasterController.GetDisplayName += PlayerCharacterMasterController_GetDisplayName;
+
+                On.RoR2.UI.Nameplate.LateUpdate += Nameplate_LateUpdate;
+
+                //On.RoR2.SubjectChatMessage.ConstructChatString += SubjectChatMessage_ConstructChatString;
+
+                On.RoR2.SubjectChatMessage.GetSubjectName += SubjectChatMessage_GetSubjectName;
+
                 // UILayerKey.topLayerRepresentations and queries should probably be handled by this plugin. 
                 // MPButton_CanBeSelected is a quick hack to get things working but it makes layer keys useless
                 //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem += UILayerKey_RefreshTopLayerForEventSystem; 
@@ -300,6 +315,8 @@ namespace XSplitScreen
             else
             {
                 On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
+
+                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed -= MPControlHelper_InputModuleIsAllowed;
 
                 On.RoR2.UI.MPButton.Update -= MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
@@ -330,6 +347,18 @@ namespace XSplitScreen
 
                 On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal -= CombatHealthBarViewer_SetLayoutHorizontal;
 
+                On.RoR2.NetworkUser.UpdateUserName -= NetworkUser_UpdateUserName;
+                On.RoR2.NetworkUser.GetNetworkPlayerName -= NetworkUser_GetNetworkPlayerName;
+
+                On.RoR2.PlayerCharacterMasterController.GetDisplayName -= PlayerCharacterMasterController_GetDisplayName;
+
+                On.RoR2.UI.Nameplate.LateUpdate -= Nameplate_LateUpdate;
+
+                //On.RoR2.SubjectChatMessage.ConstructChatString -= SubjectChatMessage_ConstructChatString;
+
+                On.RoR2.SubjectChatMessage.GetSubjectName -= SubjectChatMessage_GetSubjectName;
+
+                On.RoR2.UI.GameEndReportPanelController.SetPlayerInfo -= 
                 //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem -= UILayerKey_RefreshTopLayerForEventSystem;
             }
         }
@@ -337,20 +366,41 @@ namespace XSplitScreen
         #region UI Hooks
         private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
         {
+            // Force the use of cursors for all gamepads
+
             orig(self);
-            self._forceCursorForGamepad = configuration is null ? false : configuration.enabled;
+            self._forceCursorForGamepad = true;
+        }
+        private bool MPControlHelper_InputModuleIsAllowed(On.RoR2.UI.MPControlHelper.orig_InputModuleIsAllowed orig, ref MPControlHelper self, BaseInputModule inputModule)
+        {
+            return true;
+        }
+        private void MPControlHelper_OnPointerClick(On.RoR2.UI.MPControlHelper.orig_OnPointerClick orig, ref MPControlHelper self, PointerEventData eventData, Action<PointerEventData> baseMethod)
+        {
+            // On click
+            Log.LogDebug($"MPControlHelper_OnPointerClick: '{eventData.currentInputModule.name}'");
+            input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
+
+            orig(ref self, eventData, baseMethod);
         }
         private void MPButton_OnSubmit()
         {
+            // TODO - Unused -
             Log.LogDebug($"MPButton_OnSubmit");
         }
         private void MPButton_Awake(On.RoR2.UI.MPButton.orig_Awake orig, MPButton self)
         {
-            self.onClick.AddListener(MPButton_OnSubmit);
+            // TODO - Unused -
+            //self.onClick.AddListener(MPButton_OnSubmit);
+            self.disableGamepadClick = false;
+            self.disablePointerClick = false;
             orig(self);
         }
         private void MPButton_Update(On.RoR2.UI.MPButton.orig_Update orig, RoR2.UI.MPButton self)
         {
+            // Remove the check for 'disableGamepadClick'
+            // Remove fallback button setting
+
             if (!self.eventSystem || self.eventSystem.player == null)
                 return;
 
@@ -371,27 +421,20 @@ namespace XSplitScreen
         }
         private void MPButton_OnPointerClick(On.RoR2.UI.MPButton.orig_OnPointerClick orig, RoR2.UI.MPButton self, PointerEventData eventData)
         {
-            Log.LogDebug($"MPButton_OnPointerClick: '{eventData.currentInputModule.name}'");
+            // On click
+
             input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
             orig(self, eventData);
         }
         private bool MPButton_InputModuleIsAllowed(On.RoR2.UI.MPButton.orig_InputModuleIsAllowed orig, RoR2.UI.MPButton self, BaseInputModule inputModule)
         {
+            // Allow any input module
             return true;
-
-            if (self.allowAllEventSystems)
-                return true;
-
-            if (self.eventSystem)
-            {
-                if (self.eventSystem == input.currentEventSystem)
-                    return true;
-            }
-
-            return false;
         }
         private bool MPButton_CanBeSelected(On.RoR2.UI.MPButton.orig_CanBeSelected orig, MPButton self)
         {
+            // Remove top layer requirement
+
             if (!self.gameObject.activeInHierarchy)
                 return false;
 
@@ -399,6 +442,8 @@ namespace XSplitScreen
         }
         private void MPInput_CenterCursor(On.RoR2.UI.MPInput.orig_CenterCursor orig, MPInput self)
         {
+            // Center each cursor on the assigned screen
+
             Assignment? assignment = configuration.GetAssignmentByPlayerId(self.playerId - 1);
 
             if (assignment.HasValue)
@@ -423,19 +468,24 @@ namespace XSplitScreen
         }
         private object MPInputModule_GetMousePointerEventData(On.RoR2.UI.MPInputModule.orig_GetMousePointerEventData orig, RoR2.UI.MPInputModule self, int playerId, int mouseIndex)
         {
+            // Cycle through raycasts to allow input field to be selected
+            // Enable MPToggle click
+
             IMouseInputSource mouseInputSource = self.GetMouseInputSource(playerId, mouseIndex);
 
             if (mouseInputSource == null)
+            {
+                //if (playerId > 0)
+                //    Log.LogDebug($"MPInputModule_GetMousePointerEventData: '{playerId}' mouseInputSource is null");
                 return null;
+            }
 
             PlayerPointerEventData data1;
 
-            // If pointer event data was created? or already exists?
             int num = self.GetPointerData(playerId, mouseIndex, -1, out data1, true, PointerEventType.Mouse) ? 1 : 0;
 
             data1.Reset();
 
-            // if pointer data exists, set mouse position to current position? to calculate delta later I think
             if (num != 0)
                 data1.position = self.input.mousePosition;
 
@@ -455,7 +505,6 @@ namespace XSplitScreen
             data1.scrollDelta = mouseInputSource.wheelDelta;
             data1.button = PointerEventData.InputButton.Left;
 
-            // Raycast all objects from current position and select the first one
             self.eventSystem.RaycastAll(data1, self.m_RaycastResultCache);
             RaycastResult firstRaycast = BaseInputModule.FindFirstRaycast(self.m_RaycastResultCache);
 
@@ -471,9 +520,10 @@ namespace XSplitScreen
                 {
                     if (raycast.gameObject != null)
                     {
-                        TMPro.TMP_InputField input = raycast.gameObject.GetComponent<TMPro.TMP_InputField>();
-                        MPButton mpButton = raycast.gameObject.GetComponent<RoR2.UI.MPButton>();
-                        HGButton hgButton = raycast.gameObject.GetComponent<HGButton>();
+                        TMPro.TMP_InputField input = raycast.gameObject.GetComponent<TMP_InputField>();
+                        MPButton mpButton = raycast.gameObject.GetComponent<MPButton>();
+                        HGButton hgButton = raycast.gameObject.transform?.parent.gameObject.GetComponent<HGButton>();
+                        MPToggle mpToggle = raycast.gameObject.transform?.parent.gameObject.GetComponent<MPToggle>();
 
                         if (input != null && priority < 3)
                         {
@@ -488,9 +538,9 @@ namespace XSplitScreen
                             if (priority < 2)
                             {
                                 if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject.transform.parent.gameObject}' p2");
 
-                                focusObject = raycast.gameObject;
+                                focusObject = raycast.gameObject.transform.parent.gameObject;
                                 priority = 2;
                             }
                         }
@@ -499,20 +549,50 @@ namespace XSplitScreen
                             if (priority < 1)
                             {
                                 if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p1");
 
                                 focusObject = raycast.gameObject;
+                                priority = 1;
+                            }
+                        }
+                        if (mpToggle != null)
+                        {
+                            if (priority < 1)
+                            {
+                                if (logOutput)
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject.transform.parent.gameObject}' p1");
+
+                                focusObject = raycast.gameObject.transform.parent.gameObject;
                                 priority = 1;
                             }
                         }
                     }
                 }
             }
+
             if (self.eventSystem.currentSelectedGameObject != null && focusObject == null)
                 if (self.eventSystem.currentSelectedGameObject.GetComponent<TMPro.TMP_InputField>() != null)
                     focusObject = self.eventSystem.currentSelectedGameObject;
 
-            
+            //if (focusObject is null)
+            //    Log.LogDebug($"MPInputModule_GetMousePointerEventData: '{playerId}' focusObject is null");
+
+            MPToggle toggle = focusObject?.GetComponent<MPToggle>();
+
+            if (toggle)
+            {
+                MPEventSystemLocator locator = toggle.GetComponent<MPEventSystemLocator>();
+
+                if (locator?.eventSystem)
+                {
+                    if (locator.eventSystem.player.GetButtonDown(4) || locator.eventSystem.player.GetButtonDown(14))
+                    {
+                        input.UpdateCurrentEventSystem(locator.eventSystem);
+                        toggle.Set(!toggle.isOn);
+                    }
+                }
+            }
+
             self.eventSystem.SetSelectedGameObject(focusObject);
 
             data1.pointerCurrentRaycast = firstRaycast;
@@ -548,12 +628,13 @@ namespace XSplitScreen
                 self.GetPointerData(playerId, mouseIndex, index - 2147483520, out data4, false, PointerEventType.Mouse);
                 self.m_MouseState.SetButtonState(index, self.StateForMouseButton(playerId, mouseIndex, index), data4);
             }
-
+            
             return self.m_MouseState;
         }
         private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
         {
             // Fix debug spam
+
             if (EventSystem.current == null)
                 return;
 
@@ -566,6 +647,8 @@ namespace XSplitScreen
         }
         private void SurvivorIconController_UpdateAvailability(On.RoR2.UI.SurvivorIconController.orig_UpdateAvailability orig, SurvivorIconController self)
         {
+            // Combine and enable entitlements for each profile
+
             self.SetBoolAndMarkDirtyIfChanged(ref self.survivorIsUnlocked, SurvivorCatalog.SurvivorIsUnlockedOnThisClient(self.survivorIndex));
             self.SetBoolAndMarkDirtyIfChanged(ref self.survivorRequiredExpansionEnabled, self.survivorDef.CheckRequiredExpansionEnabled((NetworkUser)null));
 
@@ -581,6 +664,12 @@ namespace XSplitScreen
         }
         private void MPEventSystem_ValidateCurrentSelectedGameobject(On.RoR2.UI.MPEventSystem.orig_ValidateCurrentSelectedGameobject orig, RoR2.UI.MPEventSystem self)
         {
+            // Disabled
+            return;
+
+            // Remove input source check
+            // Remove navigation mode check
+
             if (!self.currentSelectedGameObject)
                 return;
 
@@ -593,6 +682,8 @@ namespace XSplitScreen
         }
         private void CharacterSelectController_Update(On.RoR2.UI.CharacterSelectController.orig_Update orig, CharacterSelectController self)
         {
+            // Update the local user to the player who last interacted with the UI
+
             if (input.currentEventSystem)
                 self.localUser = input.currentEventSystem.localUser;
 
@@ -600,6 +691,8 @@ namespace XSplitScreen
         }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
         {
+            // Use input.currentEventSystem
+
             if (self.pickedIcon == newPickedIcon)
                 return;
 
@@ -622,6 +715,8 @@ namespace XSplitScreen
         }
         private void ViewablesCatalog_AddNodeToRoot(On.RoR2.ViewablesCatalog.orig_AddNodeToRoot orig, ViewablesCatalog.Node node)
         {
+            // Stop console spam
+
             node.SetParent(ViewablesCatalog.rootNode);
 
             foreach (ViewablesCatalog.Node descendant in node.Descendants())
@@ -675,10 +770,14 @@ namespace XSplitScreen
         }
         private NetworkUser RuleChoiceController_FindNetworkUser(On.RoR2.UI.RuleChoiceController.orig_FindNetworkUser orig, RuleChoiceController self)
         {
+            // Use input.currentEventSystem
+
             return input.currentEventSystem?.localUser.currentNetworkUser;
         }
         private void LoadoutPanelController_UpdateDisplayData(On.RoR2.UI.LoadoutPanelController.orig_UpdateDisplayData orig, RoR2.UI.LoadoutPanelController self)
         {
+            // Use input.currentEventSystem
+
             UserProfile userProfile = input.currentEventSystem?.localUser?.userProfile;
             NetworkUser currentNetworkUser = input.currentEventSystem?.localUser?.currentNetworkUser;
 
@@ -692,6 +791,8 @@ namespace XSplitScreen
         }
         private void RunCameraManager_Update(On.RoR2.RunCameraManager.orig_Update orig, RunCameraManager self)
         {
+            // Set screens to desired areas
+
             bool instance = Stage.instance;
 
             if (instance)
@@ -778,6 +879,8 @@ namespace XSplitScreen
         }
         private void LocalCameraEffect_OnUICameraPreCull(On.RoR2.LocalCameraEffect.orig_OnUICameraPreCull orig, UICamera uiCamera)
         {
+            // Disable death effect for players still alive
+
             for (int index = 0; index < LocalCameraEffect.instancesList.Count; index++)
             {
                 GameObject target = uiCamera.cameraRigController.target;
@@ -791,6 +894,8 @@ namespace XSplitScreen
         }
         private void CombatHealthBarViewer_SetLayoutHorizontal(On.RoR2.UI.CombatHealthBarViewer.orig_SetLayoutHorizontal orig, RoR2.UI.CombatHealthBarViewer self)
         {
+            // iDeathHD fix
+
             UICamera uiCamera = self.uiCamera;
 
             if (!uiCamera)
@@ -798,6 +903,157 @@ namespace XSplitScreen
 
             self.UpdateAllHealthbarPositions(uiCamera.cameraRigController.sceneCam, uiCamera.camera);
         }
+        private void NetworkUser_UpdateUserName(On.RoR2.NetworkUser.orig_UpdateUserName orig, RoR2.NetworkUser self)
+        {
+            if (self.localUser == null)
+            {
+                self.userName = self.GetNetworkPlayerName().GetResolvedName();
+            }
+            else
+            {
+                self.userName = self.localUser.userProfile.name;
+            }
+        }
+        private NetworkPlayerName NetworkUser_GetNetworkPlayerName(On.RoR2.NetworkUser.orig_GetNetworkPlayerName orig, RoR2.NetworkUser self)
+        {
+            NetworkPlayerName name = new NetworkPlayerName()
+            {
+                nameOverride = self.id.strValue != null ? self.id.strValue : (string)null,
+                steamId = !string.IsNullOrEmpty(self.id.strValue) ? new CSteamID() : new CSteamID(self.id.value)
+            }; 
+
+            if (self.localUser != null)
+            {
+            //    name.nameOverride = self.localUser?.userProfile.name;
+            }
+
+            return name;
+        }
+        private string PlayerCharacterMasterController_GetDisplayName(On.RoR2.PlayerCharacterMasterController.orig_GetDisplayName orig, RoR2.PlayerCharacterMasterController self)
+        {
+            string name = "";
+
+            if (self.networkUserObject)
+            {
+                NetworkUser networkUser = self.networkUserObject.GetComponent<NetworkUser>();
+
+                if (networkUser)
+                {
+                    if (networkUser.localUser == null)
+                    {
+                        name = networkUser.userName;
+                    }
+                    else
+                    {
+                        name = networkUser.localUser.userProfile.name;
+                    }
+                }
+            }
+
+            return name;
+        }
+        private void Nameplate_LateUpdate(On.RoR2.UI.Nameplate.orig_LateUpdate orig, RoR2.UI.Nameplate self)
+        {
+            string str = "";
+
+            Color baseColor = self.baseColor;
+
+            bool flag1 = true;
+            bool flag2 = false;
+            bool flag3 = false;
+
+            int localUserIndex = -1;
+
+            if (self.body)
+            {
+                str = self.body.GetDisplayName();
+
+                flag1 = self.body.healthComponent.alive;
+                flag2 = !self.body.outOfCombat || !self.body.outOfDanger;
+                flag3 = self.body.healthComponent.isHealthLow;
+
+                CharacterMaster master = self.body.master;
+
+                if (master)
+                {
+                    PlayerCharacterMasterController component1 = master.GetComponent<PlayerCharacterMasterController>();
+
+                    if (component1)
+                    {
+                        GameObject networkUserObject = component1.networkUserObject;
+
+                        if (networkUserObject)
+                        {
+                            NetworkUser component2 = networkUserObject.GetComponent<NetworkUser>();
+
+                            if (component2)
+                            {
+                                str = component2.userName;
+
+                                if (component2.localUser != null)
+                                {
+                                    str = component2.localUser.userProfile.name;
+                                    localUserIndex = component2.localUser.id;
+                                }
+                            }
+                        }
+                    }
+                    else
+                        str = RoR2.Language.GetString(self.body.baseNameToken);
+                }
+            }
+
+            Color color = flag2 ? self.combatColor : localUserIndex > -1 ? ColorCatalog.GetMultiplayerColor(localUserIndex) : self.baseColor;
+
+            self.aliveObject.SetActive(flag1);
+            self.deadObject.SetActive(!flag1);
+
+            if (self.criticallyHurtSpriteRenderer)
+            {
+                self.criticallyHurtSpriteRenderer.enabled = flag3 & flag1;
+                self.criticallyHurtSpriteRenderer.color = HealthBar.GetCriticallyHurtColor();
+            }
+
+            if (self.label)
+            {
+                self.label.text = str;
+                self.label.color = color;
+            }
+
+            foreach (SpriteRenderer coloredSprite in self.coloredSprites)
+                coloredSprite.color = color;
+        }
+        private string SubjectChatMessage_ConstructChatString(On.RoR2.SubjectChatMessage.orig_ConstructChatString orig, RoR2.SubjectChatMessage self)
+        {
+            if (self.subjectAsNetworkUser)
+            {
+                if(self.subjectAsNetworkUser.localUser == null)
+                    return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.userName);
+                else
+                    return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.localUser.userProfile.name);
+            }
+
+            if (self.subjectAsCharacterBody)
+                return self.subjectAsCharacterBody.GetDisplayName();
+
+            return "???";
+        }
+        private string SubjectChatMessage_GetSubjectName(On.RoR2.SubjectChatMessage.orig_GetSubjectName orig, SubjectChatMessage self)
+        {
+            if (self.subjectAsNetworkUser)
+            {
+                if (self.subjectAsNetworkUser.localUser != null)
+                    return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.localUser.userProfile.name);
+
+                return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.userName);
+            }
+
+            if (self.subjectAsCharacterBody)
+                return self.subjectAsCharacterBody.GetDisplayName();
+
+            return "???";
+        }
+        //private void GameEndReportPanelController_SetPlayerInfo(On.RoR2.UI.GameEndReportPanelController.) // End game player name
         #endregion
 
         #endregion
@@ -963,8 +1219,13 @@ namespace XSplitScreen
             {
                 Log.LogDebug($"XSplitScreen.AssignControllers: Auto Assigned");
                 ReInput.controllers.AutoAssignJoysticks();
+                PrintControllers();
                 return;
             }
+
+            // PrintControllers();
+
+            bool keyboardAssigned = false;
 
             foreach (Assignment assignment in configuration.assignments)
             {
@@ -972,10 +1233,13 @@ namespace XSplitScreen
                     continue;
 
                 int playerIndex = assignment.playerId;
+
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.ClearAllControllers();
 
                 if (assignment.controller.type == ControllerType.Keyboard)
                 {
+                    keyboardAssigned = true;
+
                     foreach (Controller controller in ReInput.controllers.Controllers)
                     {
                         if (controller.type == ControllerType.Mouse)
@@ -989,6 +1253,49 @@ namespace XSplitScreen
 
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.AddController(assignment.controller, false);
                 Log.LogDebug($"XSplitScreen.AssignControllers: Assigning '{assignment.controller.name}' to playerIndex '{playerIndex}'");
+            }
+
+            if (!keyboardAssigned)
+            {
+                foreach (Controller controller in ReInput.controllers.Controllers)
+                {
+                    if (controller.type == ControllerType.Mouse || controller.type == ControllerType.Keyboard)
+                    {
+                        Log.LogDebug($"Keyboard not assigned - adding to first player");
+                        LocalUserManager.GetFirstLocalUser().inputPlayer.controllers.AddController(controller, false);
+                    }
+                }
+            }
+            // Mouse stops working when the gamepad is moved
+            PrintControllers();
+        }
+        private void PrintControllers()
+        {
+            Log.LogDebug($"XSplitScreen.PrintControllers: readOnlyLocalUsersList");
+            for (int e = 0; e < LocalUserManager.readOnlyLocalUsersList.Count; e++)
+            {
+                foreach (Controller controller in LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.Controllers)
+                {
+                    Log.LogDebug($"XSplitScreen.PrintControllers: Player '{LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.name}' has controller '{controller}'");
+                }
+            }
+
+            Log.LogDebug($"XSplitScreen.PrintControllers: ReInput players");
+            foreach (Player player in ReInput.players.AllPlayers)
+            {
+                
+                //Print($" - {player.name}");
+                foreach (Controller controller in player.controllers.Controllers)
+                {
+                    Log.LogDebug($"XSplitScreen.PrintControllers: '{player.name}' <- '{controller.name}'");
+                }
+            }
+
+            Log.LogDebug($"XSplitScreen.PrintControllers: MPInputModules");
+
+            foreach (MPEventSystem eventSystem in MPEventSystem.readOnlyInstancesList)
+            {
+                Log.LogDebug($"XSplitScreen.PrintControllers: '{eventSystem.name}' currentInputSource = '{eventSystem.currentInputSource}'");
             }
         }
         #endregion
