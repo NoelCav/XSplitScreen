@@ -141,13 +141,13 @@ namespace XSplitScreen
             if(status)
             {
                 configuration.onControllerConnected += OnControllerConnected;
-                configuration.onControllerDisconnected += OnControllerDisconnected;
+                //configuration.onControllerDisconnected += OnControllerDisconnected;
                 configuration.onConfigurationUpdated.AddListener(OnConfigurationUpdated);
             }
             else
             {
                 configuration.onControllerConnected -= OnControllerConnected;
-                configuration.onControllerDisconnected -= OnControllerDisconnected;
+                //configuration.onControllerDisconnected -= OnControllerDisconnected;
                 configuration.onConfigurationUpdated.RemoveListener(OnConfigurationUpdated);
             }
         }
@@ -189,13 +189,9 @@ namespace XSplitScreen
             Sprite sprite = sprite_Xinput;
 
             if (controller.name.ToLower().Contains("sony") || controller.name.ToLower().Contains("hyper"))
-            {
                 sprite = sprite_Dinput;
-            }
             else if (controller.name.ToLower().Contains("key"))
-            {
                 sprite = sprite_Keyboard;
-            }
 
             return sprite;
         }
@@ -355,7 +351,7 @@ namespace XSplitScreen
                 // TODO organize
                 displayFollower = new GameObject($"(Display Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 displayFollower.transform.SetParent(followerContainer);
-                displayFollower.transform.localScale = Vector3.one * 0.19f;
+                displayFollower.transform.localScale = Vector3.one * (controller.type == ControllerType.Keyboard ? 0.27f : 0.19f);
                 displayFollower.movementSpeed = iconFollowerSpeed;
                 displayFollower.smoothMovement = true;
                 displayFollower.target = GetComponent<RectTransform>();
@@ -375,7 +371,7 @@ namespace XSplitScreen
 
                 iconFollower = new GameObject($"(Icon Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 iconFollower.transform.SetParent(followerContainer);
-                iconFollower.transform.localScale = Vector3.one * 0.3f;
+                iconFollower.transform.localScale = Vector3.one * (controller.type == ControllerType.Keyboard ? 0.35f : 0.3f);
                 iconFollower.target = gameObject.GetComponent<RectTransform>();
                 iconFollower.movementSpeed = iconFollowerSpeed;
                 iconFollower.destroyOnTargetLost = true;

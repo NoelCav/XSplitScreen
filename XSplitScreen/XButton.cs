@@ -11,9 +11,10 @@ using UnityEngine.UI;
 using static UnityEngine.UI.Button;
 
 namespace XSplitScreen
-{ // TODO move to Components
-    
+{
+    // TODO remove
     // This was supposed to replace ingame buttons but that wasn't a good idea.
+    // Better to just enable hooks in the mod menu
     public class XButton : HGButton
     {
         #region Variables
@@ -28,6 +29,7 @@ namespace XSplitScreen
         public bool allowOutsiderOnPointerUp = false;
 
         private bool receivedClickThisFrame = false; // Gamepads click twice
+        private bool waitForSetupOnEnable = false;
         #endregion
 
         #region Unity Methods
@@ -48,6 +50,12 @@ namespace XSplitScreen
         }
         public override void OnEnable()
         {
+            if(targetGraphic is null)
+            {
+                waitForSetupOnEnable = true;
+                return;
+            }    
+
             base.OnEnable();
 
             if (eventSystem == null)
@@ -55,6 +63,17 @@ namespace XSplitScreen
         }
         public new void Update()
         {
+            if (waitForSetupOnEnable)
+            {
+                if (targetGraphic is null)
+                    return;
+                else
+                {
+                    waitForSetupOnEnable = false;
+                    OnEnable();
+                }
+            }
+
             base.Update();
 
             if (allowOutsiderOnPointerUp)
@@ -170,6 +189,12 @@ namespace XSplitScreen
         // LanguageTextMeshController
         public string token;
 
+        // Selectable
+        public Graphic targetGraphic;
+        public Selectable.Transition transition;
+        public ColorBlock colors;
+        public bool interactable;
+
         // Destroying components will take effect next frame. 
         private int frameCount = 0;
         private int frameToDestroy = 1;
@@ -178,9 +203,7 @@ namespace XSplitScreen
         public void Awake()
         {
             if(!initialized)
-            {
                 Initialize();
-            }
         }
         public void Initialize(int frameToDestroy = 1)
         {
@@ -196,12 +219,14 @@ namespace XSplitScreen
             StoreReferences();
             DestroyComponents();
             gameObject.SetActive(true);
+
+            initialized = true;
         }
         public void Update()
         {
             frameCount++;
 
-            if(frameCount == frameToDestroy)
+            if(frameCount >= frameToDestroy)
             {
                 CreateXButton();
                 Destroy(this);
@@ -261,6 +286,11 @@ namespace XSplitScreen
 
             if(langController != null)
                 token = langController.token;
+
+            targetGraphic = button.targetGraphic;
+            transition = button.transition;
+            colors = button.colors;
+            interactable = button.interactable;
             // TODO ensure there are no broken references between button and text / languagecontroller
         }
         private void CreateXButton()
@@ -320,6 +350,11 @@ namespace XSplitScreen
 
             if(langController != null)
                 langController.token = token;
+
+            button.targetGraphic = targetGraphic;
+            button.transition = transition;
+            button.colors = colors;
+            button.interactable = interactable;
         }
         private void DestroyComponents()
         {

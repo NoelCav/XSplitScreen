@@ -49,7 +49,7 @@ namespace XSplitScreen
         }
         public void OnDestroy()
         {
-            Log.LogDebug($"Display is null = {display is null}");
+            ToggleListeners(false);
         }
         #endregion
 
@@ -89,6 +89,9 @@ namespace XSplitScreen
         }
         private void ToggleListeners(bool status)
         {
+            if (configuration is null)
+                return;
+
             if(status)
             {
                 configuration.onControllerConnected += OnControllerConnected;
@@ -139,6 +142,11 @@ namespace XSplitScreen
         #endregion
 
         #region Events
+        public void OnUpdateDisplay()
+        {
+            InitializeGraph();
+            ScreenDisplay.instance.OnConfigurationUpdated();
+        }
         public void OnAssignController(Icon icon)
         {
             Screen closestScreen = null;
@@ -852,6 +860,8 @@ namespace XSplitScreen
                         Screen screen = screens[screenIndex];
 
                         //screen.showButton = !node.nodeData.data.isAssigned;
+                        bool canAddPlayer = configuration.assignedPlayerCount <= configuration.maxLocalPlayers;
+
                         switch(node.nodeType)
                         {
                             case NodeType.Primary:
@@ -1098,7 +1108,7 @@ namespace XSplitScreen
             {
                 GameObject playerPaneBackgroundObject = new GameObject("(Image) Background", typeof(RectTransform), typeof(Image));
                 playerPaneBackgroundObject.transform.SetParent(transform);
-                playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.4f;
+                playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.445f;//0.425f;
                 playerPaneBackgroundObject.transform.localPosition = Vector3.zero;
 
                 background = playerPaneBackgroundObject.GetComponent<Image>();

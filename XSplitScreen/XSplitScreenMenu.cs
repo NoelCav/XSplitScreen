@@ -123,11 +123,14 @@ namespace XSplitScreen
             CanvasScaler canvasScaler = screen.AddComponent<CanvasScaler>();
             GraphicRaycaster raycaster = screen.AddComponent<GraphicRaycaster>();
             CanvasGroup canvasGroup = screen.AddComponent<CanvasGroup>();
-            this.layerKey = screen.AddComponent<UILayerKey>();
+
+            // Disabled as this requires UI layer keys
+            //InputSourceFilter inputSourceFilter = screen.AddComponent<InputSourceFilter>();
+            //HGGamepadInputEvent gamepadInputEvent = screen.AddComponent<HGGamepadInputEvent>();
+
+            layerKey = screen.AddComponent<UILayerKey>();
 
             CursorOpener cursorOpener = screen.AddComponent<CursorOpener>();
-            //InputSourceFilter gamepadFilter = screen.AddComponent<InputSourceFilter>();
-            //InputSourceFilter keyboardFilter = screen.AddComponent<InputSourceFilter>();
 
             canvas.additionalShaderChannels = tCanvas.additionalShaderChannels;
             canvas.renderMode = tCanvas.renderMode;
@@ -146,7 +149,7 @@ namespace XSplitScreen
 
             screen.AddComponent<MPEventSystemProvider>();
 
-            GameObject duplicateMenu = GameObject.Instantiate(template.transform.GetChild(0).gameObject);
+            GameObject duplicateMenu = Instantiate(template.transform.GetChild(0).gameObject);
             duplicateMenu.name = "Main Panel";
             duplicateMenu.transform.SetParent(screen.transform);
 
@@ -158,7 +161,18 @@ namespace XSplitScreen
             onEnableSubmenu.action.AddListener(duplicateMenu.transform.GetChild(2).GetComponent<UIJuice>().TransitionPanFromBottom);
             onEnableSubmenu.action.AddListener(duplicateMenu.transform.GetChild(2).GetComponent<UIJuice>().TransitionAlphaFadeIn);
 
-            foreach(HGButton button in duplicateMenu.GetComponentsInChildren<HGButton>())
+            Destroy(screen.transform.GetChild(0).transform.GetChild(2).gameObject);
+
+            // Disabled as this requires UI layer keys
+            //inputSourceFilter.objectsToFilter = new GameObject[1];
+            //inputSourceFilter.objectsToFilter[0] = screen.transform.GetChild(0).transform.GetChild(2).gameObject;
+            //inputSourceFilter.requiredInputSource = MPEventSystem.InputSource.Gamepad;
+
+            //gamepadInputEvent.actionName = "UICancel";
+            //gamepadInputEvent.actionEvent = new UnityEvent();
+            //gamepadInputEvent.enabledObjectsIfActive = new GameObject[0];
+
+            foreach (HGButton button in duplicateMenu.GetComponentsInChildren<HGButton>())
             {
                 button.requiredTopLayer = layerKey;
 
@@ -169,7 +183,10 @@ namespace XSplitScreen
                 converter.Initialize();
 
                 if (button.name.ToLower().Contains("return"))
+                {
                     converter.onClickMono.AddListener(OnClickRequestMenu);
+                    //gamepadInputEvent.actionEvent.AddListener(OnClickRequestMenu);
+                }
             }
 
             Destroy(onEnableGenericMenu.gameObject.transform.GetChild(0).GetChild(1).gameObject);
@@ -259,6 +276,10 @@ namespace XSplitScreen
         public void OnClickRequestMenu(MonoBehaviour mono)
         {
             MainMenuController.instance.SetDesiredMenuScreen(MainMenuController.instance.titleMenuScreen);
+        }
+        public void OnClickRequestMenu()
+        {
+            OnClickRequestMenu(null);
         }
         private static void OnClickOpenDebugFolder(MonoBehaviour mono)
         {
