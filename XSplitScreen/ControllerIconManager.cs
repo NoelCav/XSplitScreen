@@ -24,12 +24,14 @@ namespace XSplitScreen
         public List<Icon> icons { get; private set; }
         public RectTransform followerContainer { get; private set; }
 
+        // TODO move references to appropriate spots
         public Sprite sprite_Dinput { get; private set; }
         public Sprite sprite_Xinput { get; private set; }
         public Sprite sprite_Keyboard { get; private set; }
         public Sprite sprite_Unknown { get; private set; }
-        public Sprite sprite_Checkmark { get; private set; }
+        //public Sprite sprite_Checkmark { get; private set; }
         public Sprite sprite_Xmark { get; private set; }
+        public Sprite sprite_Lock { get; private set; }
 
         public IconEvent onStartDragIcon { get; private set; }
         public IconEvent onStopDragIcon { get; private set; }
@@ -40,8 +42,9 @@ namespace XSplitScreen
         private Texture2D texture_Xinput;
         private Texture2D texture_Keyboard;
         private Texture2D texture_Unknown;
-        private Texture2D texture_Checkmark;
+        //private Texture2D texture_Checkmark;
         private Texture2D texture_Xmark;
+        private Texture2D texture_Lock;
 
         private RectTransform iconPrefab;
         private RectTransform iconContainer;
@@ -83,15 +86,17 @@ namespace XSplitScreen
             texture_Xinput = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/xinput.png");
             texture_Keyboard = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/keyboardmouse.png");
             texture_Unknown = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/unknown.png");
-            texture_Checkmark = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/checkmark.png");
+            //texture_Checkmark = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/checkmark.png");
             texture_Xmark = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/xmark.png");
+            texture_Lock = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/lock.png");
 
             sprite_Dinput = Sprite.Create(texture_Dinput, new Rect(Vector2.zero, new Vector2(texture_Dinput.width, texture_Dinput.height)), Vector2.zero);
             sprite_Xinput = Sprite.Create(texture_Xinput, new Rect(Vector2.zero, new Vector2(texture_Xinput.width, texture_Xinput.height)), Vector2.zero);
             sprite_Keyboard = Sprite.Create(texture_Keyboard, new Rect(Vector2.zero, new Vector2(texture_Keyboard.width, texture_Keyboard.height)), Vector2.zero);
             sprite_Unknown = Sprite.Create(texture_Unknown, new Rect(Vector2.zero, new Vector2(texture_Unknown.width, texture_Unknown.height)), Vector2.zero);
-            sprite_Checkmark = Sprite.Create(texture_Checkmark, new Rect(Vector2.zero, new Vector2(texture_Checkmark.width, texture_Checkmark.height)), Vector2.zero);
+            //sprite_Checkmark = Sprite.Create(texture_Checkmark, new Rect(Vector2.zero, new Vector2(texture_Checkmark.width, texture_Checkmark.height)), Vector2.zero);
             sprite_Xmark = Sprite.Create(texture_Xmark, new Rect(Vector2.zero, new Vector2(texture_Xmark.width, texture_Xmark.height)), Vector2.zero);
+            sprite_Lock = Sprite.Create(texture_Lock, new Rect(Vector2.zero, new Vector2(texture_Lock.width, texture_Lock.height)), Vector2.zero);
 
             icons = new List<Icon>();
 
@@ -141,13 +146,13 @@ namespace XSplitScreen
             if(status)
             {
                 configuration.onControllerConnected += OnControllerConnected;
-                //configuration.onControllerDisconnected += OnControllerDisconnected;
+                configuration.onControllerDisconnected += OnControllerDisconnected;
                 configuration.onConfigurationUpdated.AddListener(OnConfigurationUpdated);
             }
             else
             {
                 configuration.onControllerConnected -= OnControllerConnected;
-                //configuration.onControllerDisconnected -= OnControllerDisconnected;
+                configuration.onControllerDisconnected -= OnControllerDisconnected;
                 configuration.onConfigurationUpdated.RemoveListener(OnConfigurationUpdated);
             }
         }
@@ -163,6 +168,10 @@ namespace XSplitScreen
         }
         public void OnControllerConnected(ControllerStatusChangedEventArgs args)
         {
+            foreach (Icon icon in icons)
+                if (icon.controller.Equals(args.controller))
+                    return;
+
             CreateIcon(args.controller);
         }
         public void OnControllerDisconnected(ControllerStatusChangedEventArgs args)
@@ -261,7 +270,7 @@ namespace XSplitScreen
             //public Assignment assignment;
 
             public Image deviceImage;
-            public Image statusImage;
+            public Image statusImage; // TODO remove this
             public Image cursorImage;
             public Image displayImage;
 
@@ -320,10 +329,10 @@ namespace XSplitScreen
 
                 deviceImage.color = Color.Lerp(deviceImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
 
-                if(showStatusImage)
-                    statusImage.color = Color.Lerp(statusImage.color, Color.white, Time.unscaledDeltaTime * colorSpeed);
-                else
-                    statusImage.color = Color.Lerp(statusImage.color, Color.clear, Time.unscaledDeltaTime * colorSpeed);
+                //if(showStatusImage)
+                //    statusImage.color = Color.Lerp(statusImage.color, Color.white, Time.unscaledDeltaTime * colorSpeed);
+                //else
+                //    statusImage.color = Color.Lerp(statusImage.color, Color.clear, Time.unscaledDeltaTime * colorSpeed);
 
                 cursorImage.color = Color.Lerp(cursorImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
 
@@ -338,6 +347,8 @@ namespace XSplitScreen
                 Destroy(displayFollower.gameObject);
                 Destroy(iconFollower.gameObject);
                 Destroy(cursorFollower.gameObject);
+                configuration?.onSplitScreenEnabled.RemoveListener(OnSplitScreenEnabled);
+                configuration?.onSplitScreenDisabled.RemoveListener(OnSplitScreenDisabled);
             }
             #endregion
 
@@ -346,6 +357,9 @@ namespace XSplitScreen
             {
                 onStartDragIcon = new IconEvent();
                 onStopDragIcon = new IconEvent();
+
+                configuration.onSplitScreenEnabled.AddListener(OnSplitScreenEnabled);
+                configuration.onSplitScreenDisabled.AddListener(OnSplitScreenDisabled);
 
                 this.controller = controller;
                 // TODO organize
@@ -394,9 +408,10 @@ namespace XSplitScreen
                 deviceImage = iconFollower.GetComponent<Image>();
                 deviceImage.color = targetColor;
 
-                statusImage = statusObject.AddComponent<Image>();
-                statusImage.raycastTarget = false;
-                statusImage.color = Color.clear;
+                //statusImage = statusObject.AddComponent<Image>();
+                //statusImage.raycastTarget = false;
+                //statusImage.color = Color.clear;
+                //statusImage.enabled = false;
 
                 cursorFollower = new GameObject($"(Cursor Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 cursorFollower.transform.SetParent(followerContainer);
@@ -429,6 +444,8 @@ namespace XSplitScreen
 
                 cursorImage.sprite = deviceImage.sprite;
                 cursorImage.SetNativeSize();
+
+                button = iconFollower.GetComponent<XButton>();
 
                 UpdateStatus();
             }
@@ -466,8 +483,8 @@ namespace XSplitScreen
             public void UpdateStatus()
             {
                 showStatusImage = isAssigned;
-                statusImage.sprite = instance.sprite_Checkmark;
-                statusImage.SetNativeSize();
+                //statusImage.sprite = instance.sprite_Checkmark;
+                //statusImage.SetNativeSize();
 
                 Assignment? currentAssignment = configuration.GetAssignment(controller);
 
@@ -490,20 +507,33 @@ namespace XSplitScreen
             #endregion
 
             #region Events
+            public void OnSplitScreenEnabled()
+            {
+                button.interactable = false;
+                displayFollower.GetComponent<XButton>().interactable = false;
+                cursorFollower.gameObject.SetActive(false);
+                hasTemporaryAssignment = false;
+
+            }
+            public void OnSplitScreenDisabled()
+            {
+                button.interactable = true;
+                displayFollower.GetComponent<XButton>().interactable = true;
+            }
             public void OnHoverStart(MonoBehaviour mono)
             {
                 if (isAssigned)
                 {
-                    statusImage.sprite = instance.sprite_Xmark;
-                    statusImage.SetNativeSize();
+                    //statusImage.sprite = instance.sprite_Xmark;
+                    //statusImage.SetNativeSize();
                 }
             }
             public void OnHoverStop(MonoBehaviour mono)
             {
                 if (isAssigned)
                 {
-                    statusImage.sprite = instance.sprite_Checkmark;
-                    statusImage.SetNativeSize();
+                    //statusImage.sprite = instance.sprite_Checkmark;
+                    //statusImage.SetNativeSize();
                 }
             }
             public void OnClickIcon(MonoBehaviour mono)

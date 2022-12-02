@@ -310,13 +310,14 @@ namespace XSplitScreen
 
                 On.RoR2.UI.Nameplate.LateUpdate += Nameplate_LateUpdate;
 
-                On.RoR2.InputBindingDisplayController.Refresh += InputBindingDisplayController_Refresh;
+                On.RoR2.InputBindingDisplayController.Refresh += InputBindingDisplayController_Refresh; // HERE
+
+                On.RoR2.ColorCatalog.GetMultiplayerColor += ColorCatalog_GetMultiplayerColor;
 
                 //On.RoR2.SubjectChatMessage.ConstructChatString += SubjectChatMessage_ConstructChatString;
 
                 /* // Controller navigation requires layer keys
                 On.RoR2.SubjectChatMessage.GetSubjectName += SubjectChatMessage_GetSubjectName;
-
 
                 On.RoR2.UI.InputSourceFilter.Refresh += InputSourceFilter_Refresh;
 
@@ -374,12 +375,12 @@ namespace XSplitScreen
 
                 On.RoR2.SubjectChatMessage.GetSubjectName -= SubjectChatMessage_GetSubjectName;
 
-                On.RoR2.UI.InputSourceFilter.Refresh -= InputSourceFilter_Refresh;
+                //On.RoR2.UI.InputSourceFilter.Refresh -= InputSourceFilter_Refresh; // LAST
 
-                /*
+                On.RoR2.ColorCatalog.GetMultiplayerColor -= ColorCatalog_GetMultiplayerColor;
+                
                 On.RoR2.InputBindingDisplayController.Refresh -= InputBindingDisplayController_Refresh;
-
-
+                /*
                 On.RoR2.UI.HGGamepadInputEvent.Update -= HGGamepadInputEvent_Update;
                 */
 
@@ -1176,6 +1177,12 @@ namespace XSplitScreen
         }
         private void InputSourceFilter_Refresh(On.RoR2.UI.InputSourceFilter.orig_Refresh orig, InputSourceFilter self, bool forceRefresh)
         {
+            if (self.eventSystem?.currentInputSource != MPEventSystem.InputSource.Gamepad || Run.instance)
+                orig(self, forceRefresh);
+
+            return;
+
+            //
             MPEventSystem.InputSource? currentInputSource = input.currentMouseEventSystem?.currentInputSource;
 
             if (Run.instance)
@@ -1207,6 +1214,17 @@ namespace XSplitScreen
                 self.actionEvent.Invoke();
 
             self.couldAcceptInput = flag;
+        }
+        private Color ColorCatalog_GetMultiplayerColor(On.RoR2.ColorCatalog.orig_GetMultiplayerColor orig, int playerSlot)
+        {
+            //Log.LogDebug($"ColorCatalog_GetMultiplayerColor: Returning color for playerSlot ''");
+
+            Assignment? assignment = configuration.GetAssignmentByLocalId(playerSlot);
+
+            if (assignment.HasValue)
+                return assignment.Value.color;
+
+            return orig(playerSlot);
         }
         //private void GameEndReportPanelController_SetPlayerInfo(On.RoR2.UI.GameEndReportPanelController.) // End game player name
         #endregion
@@ -1334,15 +1352,23 @@ namespace XSplitScreen
             }
             else
             {
-                foreach (Assignment assignment in configuration.assignments)
+                int localId = 1;
+
+                Assignment[] assignments = new Assignment[configuration.assignments.Count];
+                configuration.assignments.CopyTo(assignments);
+                
+                foreach (Assignment assignment in assignments)
                 {
                     if (assignment.isAssigned)
                     {
                         localUsers.Add(new LocalUserManager.LocalUserInitializationInfo()
                         {
-                            player = ReInput.players.GetPlayer(assignment.playerId + 1),
+                            player = ReInput.players.GetPlayer(localId),//assignment.playerId + 1),
                             profile = profiles[assignment.profileId],
                         });
+
+                        configuration.SetLocalId(assignment.playerId, localId - 1);
+                        localId++;
                     }
                 }
             }
@@ -1399,10 +1425,10 @@ namespace XSplitScreen
 
             foreach (Assignment assignment in configuration.assignments)
             {
-                if (!assignment.isAssigned)
+                if (!assignment.isAssigned || assignment.localId < 0)
                     continue;
 
-                int playerIndex = assignment.playerId;
+                int playerIndex = assignment.localId;//assignment.playerId;
 
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.ClearAllControllers();
 
@@ -1785,9 +1811,21 @@ namespace XSplitScreen
             #endregion
 
             #region Assignments
-            public Rect GetScreenRect(int playerId)
+            public void SetLocalId(int playerId, int localId)
             {
                 Assignment? assignment = GetAssignmentByPlayerId(playerId);
+
+                if (assignment.HasValue)
+                {
+                    Assignment newAssignment = assignment.Value;
+                    newAssignment.localId = localId;
+
+                    SetAssignment(newAssignment);
+                }
+            }
+            public Rect GetScreenRect(int playerId)
+            {
+                Assignment? assignment = GetAssignmentByLocalId(playerId);
 
                 Rect screenRect = new Rect(0, 0, 1, 1);
 
@@ -1801,6 +1839,16 @@ namespace XSplitScreen
                 screenRect.height = assignment.Value.position.x == 1 ? 1 : 0.5f;
 
                 return screenRect;
+            }
+            public Assignment? GetAssignmentByLocalId(int localId)
+            {
+                foreach (Assignment assignment in assignments)
+                {
+                    if (assignment.localId == localId)
+                        return assignment;
+                }
+
+                return null;
             }
             public Assignment? GetAssignmentByPlayerId(int playerId)
             {
@@ -1877,7 +1925,7 @@ namespace XSplitScreen
             }
             private bool VerifyConfiguration()
             {
-                if (PlatformSystems.saveSystem.loadedUserProfiles.Values.Count == 0)
+                if (PlatformSystems.saveSystem.loadedUserProfiles.Values.Count == 0 || assignedPlayerCount < 2)
                     return false;
 
                 foreach (Assignment assignment in configuration.assignments)
@@ -1885,8 +1933,8 @@ namespace XSplitScreen
                     if (assignment.isAssigned)
                     {
                         if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count
-                            || assignment.controller == null || assignment.displayId == -1 ||
-                            assignment.displayId >= Display.displays.Length)
+                            || assignment.controller == null || assignment.displayId < 0 ||
+                            assignment.displayId >= 1/*Display.displays.Length*/) // Disable multi monitor until ready
                             return false;
                     }
                 }
@@ -2095,6 +2143,7 @@ namespace XSplitScreen
             public int displayId;  // Group: Display
             public int playerId; // Group: Assignment
             public int profileId; // Group: Assignment
+            public int localId; // Group: Assignment
 
             public Assignment(Controller controller)
             {
@@ -2106,6 +2155,7 @@ namespace XSplitScreen
                 playerId = -1;
                 profileId = -1;
                 color = Color.white;
+                localId = -1;
             }
             public int deviceId
             {

@@ -149,6 +149,8 @@ namespace XSplitScreen
         }
         public void OnAssignController(Icon icon)
         {
+            // TODO allow hot swapping controllers
+
             Screen closestScreen = null;
             float screenDistance = float.MaxValue;
             float maxDistance = 22f;
@@ -208,6 +210,8 @@ namespace XSplitScreen
         #region Assignments
         public void AssignController(Controller controller, int2 destination)
         {
+            // TODO
+            // when controller is assigned to different display, the assignment isn't being cleared during reassignment
             if (!graph.ValidPosition(destination))
                 return;
 
@@ -291,7 +295,8 @@ namespace XSplitScreen
         }
         private void RemovePlayer(Screen screen)
         {
-            if (configuration.localPlayerCount == 1)
+            Log.LogDebug($"AssignmentManager.RemovePlayer: configuration.localPlayerCount = '{configuration.localPlayerCount}'");
+            if (configuration.assignedPlayerCount == 1)
                 return;
 
             changeBuffer.Clear();
@@ -844,6 +849,8 @@ namespace XSplitScreen
                 dividerEnabled[3] = false;
                 centerEnabled = true;
 
+                bool canAddPlayer = configuration.assignedPlayerCount < configuration.maxLocalPlayers;
+                Log.LogDebug($"ScreenDisplay.OnConfigurationUpdated: configuration.assignedPlayerCount = '{configuration.assignedPlayerCount}'");
                 for (x = 0; x < data.Length; x++)
                 {
                     for(y = 0; y < data[x].Length; y++)
@@ -860,37 +867,36 @@ namespace XSplitScreen
                         Screen screen = screens[screenIndex];
 
                         //screen.showButton = !node.nodeData.data.isAssigned;
-                        bool canAddPlayer = configuration.assignedPlayerCount <= configuration.maxLocalPlayers;
 
                         switch(node.nodeType)
                         {
                             case NodeType.Primary:
                                 if(node.nodeData.data.isAssigned)
                                 {
-                                    screens[Utils.FlatIndexFrom2D(node.neighborUp, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
-                                    screens[Utils.FlatIndexFrom2D(node.neighborRight, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
-                                    screens[Utils.FlatIndexFrom2D(node.neighborDown, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
-                                    screens[Utils.FlatIndexFrom2D(node.neighborLeft, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
+                                    screens[Utils.FlatIndexFrom2D(node.neighborUp, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
+                                    screens[Utils.FlatIndexFrom2D(node.neighborRight, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
+                                    screens[Utils.FlatIndexFrom2D(node.neighborDown, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
+                                    screens[Utils.FlatIndexFrom2D(node.neighborLeft, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
                                     centerEnabled = false;
                                 }
                                 else
                                     if(!hasAssignment)
-                                        screen.showAddPlayerButton = true;
+                                        screen.showAddPlayerButton = canAddPlayer;
                                 break;
                             case NodeType.Secondary:
                                 if(node.nodeData.data.isAssigned)
                                 {
                                     if(neighborUp is null || neighborDown is null) // Column
                                     {
-                                        screens[Utils.FlatIndexFrom2D(node.neighborLeft, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
-                                        screens[Utils.FlatIndexFrom2D(node.neighborRight, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
+                                        screens[Utils.FlatIndexFrom2D(node.neighborLeft, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
+                                        screens[Utils.FlatIndexFrom2D(node.neighborRight, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
                                         dividerEnabled[1] = true;
                                         dividerEnabled[3] = true;
                                     }
                                     else // Row
                                     {
-                                        screens[Utils.FlatIndexFrom2D(node.neighborUp, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
-                                        screens[Utils.FlatIndexFrom2D(node.neighborDown, configuration.graphDimensions.x, false)].showAddPlayerButton = true;
+                                        screens[Utils.FlatIndexFrom2D(node.neighborUp, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
+                                        screens[Utils.FlatIndexFrom2D(node.neighborDown, configuration.graphDimensions.x, false)].showAddPlayerButton = canAddPlayer;
                                         dividerEnabled[0] = true;
                                         dividerEnabled[2] = true;
                                     }
@@ -1101,11 +1107,19 @@ namespace XSplitScreen
                     background.color = Color.Lerp(background.color, disabledColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
                 }
             }
+            public void OnDestroy()
+            {
+                configuration?.onSplitScreenEnabled.RemoveListener(OnSplitScreenEnabled);
+                configuration?.onSplitScreenDisabled.RemoveListener(OnSplitScreenDisabled);
+            }
             #endregion
 
             #region Initialize
             public void Initialize()
             {
+                configuration?.onSplitScreenEnabled.AddListener(OnSplitScreenEnabled);
+                configuration?.onSplitScreenDisabled.AddListener(OnSplitScreenDisabled);
+
                 GameObject playerPaneBackgroundObject = new GameObject("(Image) Background", typeof(RectTransform), typeof(Image));
                 playerPaneBackgroundObject.transform.SetParent(transform);
                 playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.445f;//0.425f;
@@ -1221,6 +1235,18 @@ namespace XSplitScreen
             #endregion
 
             #region Event Handlers
+            public void OnSplitScreenEnabled()
+            {
+                remove.sprite = ControllerIconManager.instance.sprite_Lock;
+                remove.GetComponent<XButton>().interactable = false;
+                profileDropdown.interactable = false;
+            }
+            public void OnSplitScreenDisabled()
+            {
+                remove.sprite = ControllerIconManager.instance.sprite_Xmark;
+                remove.GetComponent<XButton>().interactable = true;
+                profileDropdown.interactable = true;
+            }
             public void OnProfileSelected(int profileId)
             {
                 instance.SetProfile(profileId - 1, assignment.position);

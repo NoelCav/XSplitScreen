@@ -95,11 +95,17 @@ namespace XSplitScreen
         {
             base.OnPointerDown(eventData);
 
+            if (!interactable)
+                return;
+
             onPointerDown.Invoke(this);
         }
         public override void OnPointerUp(PointerEventData eventData)
         {
             base.OnPointerUp(eventData);
+
+            if (!interactable)
+                return;
 
             onPointerUp.Invoke(this);
         }
@@ -119,6 +125,9 @@ namespace XSplitScreen
         public void OnClick()
         {
             if (receivedClickThisFrame)
+                return;
+
+            if (!interactable)
                 return;
 
             onClickMono.Invoke(this);

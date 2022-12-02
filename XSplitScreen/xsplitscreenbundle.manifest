@@ -1,9 +1,9 @@
 ManifestFileVersion: 0
-CRC: 1244543742
+CRC: 1138698833
 Hashes:
   AssetFileHash:
     serializedVersion: 2
-    Hash: 61499d9a4b8fa2b2c0be88553ba92fa8
+    Hash: 32dea8ef1435cb6a0a5ded547e5c1149
   TypeTreeHash:
     serializedVersion: 2
     Hash: c90fc19e2679e5295d10bd00f33cb4c3
@@ -16,6 +16,8 @@ ClassTypes:
 SerializeReferenceClassIdentifiers: []
 Assets:
 - Assets/DoDad/Textures/display_center.png
+- Assets/DoDad/Textures/gear.png
+- Assets/DoDad/Textures/lock.png
 - Assets/DoDad/Textures/xmark.png
 - Assets/DoDad/Textures/unknown.png
 - Assets/DoDad/Textures/plus.png
@@ -23,7 +25,6 @@ Assets:
 - Assets/DoDad/Textures/display_screen.png
 - Assets/DoDad/Textures/divider.png
 - Assets/DoDad/Textures/keyboardmouse.png
-- Assets/DoDad/Textures/checkmark.png
 - Assets/DoDad/Textures/xinput.png
 - Assets/DoDad/Textures/dinput.png
 Dependencies: []

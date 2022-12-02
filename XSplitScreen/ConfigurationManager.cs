@@ -164,6 +164,7 @@ namespace XSplitScreen
 
                 rightConverter.Initialize(0);
                 rightConverter.onClickMono.AddListener(OnChangeDisplay);
+                rightConverter.interactable = Display.displays.Length > 1;
 
                 leftArrow.GetComponentInChildren<HGButton>().gameObject.AddComponent<XButtonConverter>();
                 leftArrow.transform.localPosition = new Vector3(-100f, 0, 0);
@@ -231,7 +232,7 @@ namespace XSplitScreen
             {
                 int direction = mono.name.Contains("Right") ? 1 : -1;
 
-                int display = Mathf.Clamp(direction + currentDisplay, 0, 2);// Display.displays.Length - 1);
+                int display = Mathf.Clamp(direction + currentDisplay, 0, Display.displays.Length - 1);
 
                 if (display == currentDisplay)
                     return;
@@ -273,20 +274,21 @@ namespace XSplitScreen
             }
             private void UpdateDisplayArrows()
             {
-                XButton rightButton = rightArrow.GetComponent<XButton>();
                 XButton leftButton = leftArrow.GetComponent<XButton>();
+                XButton rightButton = rightArrow.GetComponent<XButton>();
 
-                rightButton.interactable = true;
                 leftButton.interactable = true;
+                rightButton.interactable = true;
 
                 if (currentDisplay == 0)
                 {
                     leftButton.interactable = false;
                 }
-                else if (currentDisplay == 2)//Display.displays.Length - 1)
+                else if (currentDisplay >= Display.displays.Length - 1)
                 {
                     rightButton.interactable = false;
                 }
+                Log.LogDebug($"DISPLAY.LENGTH = '{Display.displays.Length}'");
             }
             #endregion
         }
