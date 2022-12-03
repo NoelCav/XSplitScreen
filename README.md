@@ -10,11 +10,13 @@ https://discord.gg/maHhJSv62G
 
 2. Assign players and customize
 
-3. Enable the mod
+3. Click the toggle to enable the mod
+
+4. Start a game normally
 
 ## Features
 
-- Supports 4 splitscreen players
+- Supports 4 splitscreen players in singleplayer or multiplayer
 - Full UI with icon designs by Claymaver
 - Persistent assignments
 
@@ -28,13 +30,36 @@ https://discord.gg/maHhJSv62G
 ## Known Bugs
 
 - Profiles 'forget' the last used character
-- Local users can change the loadouts of the current character
+- Profile dropdown can only be set using the mouse
+- Any user can change the loadout of the user who last refreshed the loadout panel
 - Some buttons can still become unbound when entering a run
 
 ## Special thanks
 
 - iDeathHD for creating FixedSplitScreen
 - Claymaver for art assets (https://linktr.ee/claymaver)
+- All the testers, supporters, and those who reported bugs including:
+
+MemexJota
+PKPotential
+ThatBlueRacc
+Kaiben
+The_real_douchcanoe_
+KCaptainawesome
+O\_Linny_/O
+noahwubs
+Narl
+Hansei
+Aristhma
+Re-Class May
+AdaM
+Engi
+Coked Out Monkey
+Wumble
+God of Heck
+Pub
+Bloodgem64
+kwiki
 
 ## Changelog
 
@@ -46,6 +71,7 @@ https://discord.gg/maHhJSv62G
 - Changed cursor center to the center of assigned screen
 - Fixed gamepad cursors
 - Fixed character selection
+- Fixed artifact selection
 - Fixed most keybinds not being loaded
 - Mod now uses BepInEx log and config file to store preferences
 

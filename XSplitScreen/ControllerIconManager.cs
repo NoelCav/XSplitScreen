@@ -261,7 +261,7 @@ namespace XSplitScreen
 
             private static readonly float normalAlpha = 0.4f;
             private static readonly float buttonPressAlpha = 1f;
-            private static readonly float colorSpeed = 20f;
+            private static readonly float colorSpeed = 10f;//20f;
 
             private static readonly float iconFollowerSpeed = 0.4f;
             private static readonly float cursorFollowerSpeed = 0.1f;
@@ -273,8 +273,8 @@ namespace XSplitScreen
 
             //public Assignment assignment;
 
-            public Image deviceImage;
             public Image statusImage; // TODO remove this
+            public Image iconImage;
             public Image cursorImage;
             public Image displayImage;
 
@@ -283,6 +283,7 @@ namespace XSplitScreen
             public Follower displayFollower; // use only cursorFollower to allow reassignment 
 
             public XButton iconButton;
+            public XButton cursorButton;
             public XButton displayButton;
 
             public IconEvent onStartDragIcon { get; private set; }
@@ -308,6 +309,7 @@ namespace XSplitScreen
             private Vector4 targetColor = new Vector4(1, 1, 1, 0);
             private Vector4 statusColor = Color.clear;
 
+            private int framesSinceAssignment = 0;
             private float activityTimer = 0f;
             #endregion
 
@@ -333,7 +335,7 @@ namespace XSplitScreen
                     }
                 }
 
-                deviceImage.color = Color.Lerp(deviceImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
+                iconImage.color = Color.Lerp(iconImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
 
                 //if(showStatusImage)
                 //    statusImage.color = Color.Lerp(statusImage.color, Color.white, Time.unscaledDeltaTime * colorSpeed);
@@ -348,6 +350,13 @@ namespace XSplitScreen
                 else
                     displayImage.color = Color.Lerp(displayImage.color, new Vector4(targetColor.x, targetColor.y, targetColor.z, 0f), Time.unscaledDeltaTime * colorSpeed);
 
+            }
+            public void LateUpdate()
+            {
+                framesSinceAssignment++;
+
+                if (framesSinceAssignment == 2)
+                    displayButton.interactable = true;
             }
             public void OnDestroy()
             {
@@ -384,8 +393,8 @@ namespace XSplitScreen
                 displayFollower.enabled = false;
 
                 displayButton = displayFollower.GetComponent<XButton>();
-                displayButton.onPointerDown.AddListener(OnPointerDownIcon);
-                displayButton.onClickMono.AddListener(OnClickIcon);
+                displayButton.onPointerDown.AddListener(OnPointerDownIcon); //LAST
+                displayButton.onClickMono.AddListener(OnClickIcon); //LAST
 
                 displayButton.onHoverStart.AddListener(OnHoverStart);
                 displayButton.onHoverStop.AddListener(OnHoverStop);
@@ -412,8 +421,8 @@ namespace XSplitScreen
                 statusObject.transform.localScale = Vector3.one;
                 statusObject.transform.localPosition = Vector3.zero;
 
-                deviceImage = iconFollower.GetComponent<Image>();
-                deviceImage.color = targetColor;
+                iconImage = iconFollower.GetComponent<Image>();
+                iconImage.color = targetColor;
 
                 //statusImage = statusObject.AddComponent<Image>();
                 //statusImage.raycastTarget = false;
@@ -428,13 +437,13 @@ namespace XSplitScreen
                 cursorFollower.destroyOnTargetLost = true;
                 cursorFollower.smoothMovement = true;
                 
-                iconButton = cursorFollower.GetComponent<XButton>();
-                iconButton.allowAllEventSystems = true;
-                iconButton.allowOutsiderOnPointerUp = true;
-                iconButton.onPointerUp.AddListener(OnPointerUpCursor);
-                iconButton.onClickMono.AddListener(OnClickCursor);
+                cursorButton = cursorFollower.GetComponent<XButton>();
+                cursorButton.allowAllEventSystems = true;
+                cursorButton.allowOutsiderOnPointerUp = true;
+                cursorButton.onPointerUp.AddListener(OnPointerUpCursor);
+                cursorButton.onClickMono.AddListener(OnClickCursor);
 
-                iconButton.allowOutsiderOnPointerUp = true;
+                cursorButton.allowOutsiderOnPointerUp = true;
 
                 cursorImage = cursorFollower.GetComponent<Image>();
                 cursorImage.color = targetColor;
@@ -443,16 +452,14 @@ namespace XSplitScreen
 
                 targetColor.w = 1;
 
-                deviceImage.sprite = instance.GetDeviceSprite(controller);
-                deviceImage.SetNativeSize();
+                iconImage.sprite = instance.GetDeviceSprite(controller);
+                iconImage.SetNativeSize();
 
-                displayImage.sprite = deviceImage.sprite;
+                displayImage.sprite = iconImage.sprite;
                 displayImage.SetNativeSize();
 
-                cursorImage.sprite = deviceImage.sprite;
+                cursorImage.sprite = iconImage.sprite;
                 cursorImage.SetNativeSize();
-
-                iconButton = iconFollower.GetComponent<XButton>();
 
                 UpdateStatus();
             }
@@ -532,7 +539,6 @@ namespace XSplitScreen
                 displayFollower.GetComponent<XButton>().interactable = false;
                 cursorFollower.gameObject.SetActive(false);
                 hasTemporaryAssignment = false;
-
             }
             public void OnSplitScreenDisabled()
             {
@@ -588,12 +594,17 @@ namespace XSplitScreen
             }
             public void OnPointerUpCursor(MonoBehaviour mono)
             {
+                Log.LogDebug($"Icon.OnPointerUpCursor: mono.name = '{mono.name}'");
                 cursorFollower.gameObject.SetActive(false);
                 onStopDragIcon.Invoke(this);
                 hasTemporaryAssignment = false;
 
                 if (!displayFollower.enabled)
                     displayFollower.transform.position = cursorFollower.transform.position;
+
+                displayImage.raycastTarget = false;
+                displayButton.interactable = false;
+                framesSinceAssignment = 0;
 
                 AssignmentManager.instance.OnAssignController(this);
             }

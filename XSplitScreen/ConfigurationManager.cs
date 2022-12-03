@@ -230,6 +230,8 @@ namespace XSplitScreen
             }
             public void OnChangeDisplay(MonoBehaviour mono)
             {
+                return;
+
                 int direction = mono.name.Contains("Right") ? 1 : -1;
 
                 int display = Mathf.Clamp(direction + currentDisplay, 0, Display.displays.Length - 1);
@@ -278,7 +280,7 @@ namespace XSplitScreen
                 XButton rightButton = rightArrow.GetComponent<XButton>();
 
                 leftButton.interactable = true;
-                rightButton.interactable = true;
+                //rightButton.interactable = true;
 
                 if (currentDisplay == 0)
                 {
@@ -288,7 +290,6 @@ namespace XSplitScreen
                 {
                     rightButton.interactable = false;
                 }
-                Log.LogDebug($"DISPLAY.LENGTH = '{Display.displays.Length}'");
             }
             #endregion
         }

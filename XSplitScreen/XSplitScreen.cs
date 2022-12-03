@@ -58,7 +58,6 @@ namespace XSplitScreen
 
         private bool readyToInitializePlugin;
         private bool readyToCreateUI;
-        private bool centerCursors;
 
         private int createUIFrameBuffer = 5;
         #endregion
@@ -176,6 +175,7 @@ namespace XSplitScreen
             instance = null;
 
             TogglePersistentListeners(false);
+            ToggleConditionalHooks(false);
             //ToggleUIListeners(false); // Disabled 11/27/22 - Scene switch bug
 
             if (titleButton != null)
@@ -246,7 +246,7 @@ namespace XSplitScreen
         }
         private void ScreenOnEnter()
         {
-            Log.LogDebug($"XSplitScreen.ScreenOnEnter");
+            ToggleConditionalHooks();
 
             //if (WaitForMenu != null) // Disabled 11/27/22 - Scene switch bug
             //    StopCoroutine(WaitForMenuRoutine); // Disabled 11/27/22 - Scene switch bug
@@ -255,7 +255,7 @@ namespace XSplitScreen
         }
         private void ScreenOnExit()
         {
-            Log.LogDebug("ScreenOnExit");
+            ToggleConditionalHooks();
         }
         #endregion
 
@@ -269,9 +269,6 @@ namespace XSplitScreen
             {
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
 
-                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed += MPControlHelper_InputModuleIsAllowed;
-                On.RoR2.UI.MPControlHelper.OnPointerClick += MPControlHelper_OnPointerClick;
-
                 On.RoR2.UI.MPButton.Update += MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick += MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed += MPButton_InputModuleIsAllowed;
@@ -281,9 +278,9 @@ namespace XSplitScreen
                 On.RoR2.UI.MPInput.CenterCursor += MPInput_CenterCursor;
                 On.RoR2.UI.MPInput.Update += MPInput_Update;
 
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
+                //On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // Moved to conditional
 
-                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject;
+                //On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // Moved to conditional
 
                 On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
 
@@ -314,6 +311,10 @@ namespace XSplitScreen
 
                 On.RoR2.ColorCatalog.GetMultiplayerColor += ColorCatalog_GetMultiplayerColor;
 
+                On.RoR2.UI.BaseSettingsControl.GetCurrentUserProfile += BaseSettingsControl_GetCurrentUserProfile;
+
+                On.RoR2.UI.ProfileNameLabel.LateUpdate += ProfileNameLabel_LateUpdate;
+
                 //On.RoR2.SubjectChatMessage.ConstructChatString += SubjectChatMessage_ConstructChatString;
 
                 /* // Controller navigation requires layer keys
@@ -332,8 +333,6 @@ namespace XSplitScreen
             {
                 On.RoR2.UI.CursorOpener.Awake -= CursorOpener_Awake;
 
-                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed -= MPControlHelper_InputModuleIsAllowed;
-
                 On.RoR2.UI.MPButton.Update -= MPButton_Update;
                 On.RoR2.UI.MPButton.OnPointerClick -= MPButton_OnPointerClick;
                 On.RoR2.UI.MPButton.InputModuleIsAllowed -= MPButton_InputModuleIsAllowed;
@@ -343,9 +342,9 @@ namespace XSplitScreen
                 On.RoR2.UI.MPInput.CenterCursor -= MPInput_CenterCursor;
                 On.RoR2.UI.MPInput.Update -= MPInput_Update;
 
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData; // Moved to conditional
 
-                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
+                //On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject; // Moved to conditional
 
                 On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
 
@@ -380,6 +379,11 @@ namespace XSplitScreen
                 On.RoR2.ColorCatalog.GetMultiplayerColor -= ColorCatalog_GetMultiplayerColor;
                 
                 On.RoR2.InputBindingDisplayController.Refresh -= InputBindingDisplayController_Refresh;
+
+                On.RoR2.UI.BaseSettingsControl.GetCurrentUserProfile -= BaseSettingsControl_GetCurrentUserProfile;
+
+                On.RoR2.UI.ProfileNameLabel.LateUpdate += ProfileNameLabel_LateUpdate;
+
                 /*
                 On.RoR2.UI.HGGamepadInputEvent.Update -= HGGamepadInputEvent_Update;
                 */
@@ -387,9 +391,41 @@ namespace XSplitScreen
                 //On.RoR2.UI.GameEndReportPanelController.SetPlayerInfo -= 
                 //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem -= UILayerKey_RefreshTopLayerForEventSystem;
             }
+
+            ToggleConditionalHooks();
+        }
+        private void ToggleConditionalHooks(bool exit = false)
+        {
+            bool status = false;
+
+            if(configuration != null && XSplitScreenMenu.instance != null)
+                status = configuration.enabled || MainMenuController.instance.currentMenuScreen == XSplitScreenMenu.instance;
+
+            if (exit)
+                status = false;
+
+            if (status)
+            {
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
+
+                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed += MPControlHelper_InputModuleIsAllowed;
+                On.RoR2.UI.MPControlHelper.OnPointerClick += MPControlHelper_OnPointerClick;
+
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject;
+            }
+            else
+            {
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
+
+                On.RoR2.UI.MPControlHelper.InputModuleIsAllowed -= MPControlHelper_InputModuleIsAllowed;
+                On.RoR2.UI.MPControlHelper.OnPointerClick -= MPControlHelper_OnPointerClick;
+
+                On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject;
+            }
         }
 
         #region UI Hooks
+        // TODO Replace hooks with IL hooks where appropriate
         private void CursorOpener_Awake(On.RoR2.UI.CursorOpener.orig_Awake orig, CursorOpener self)
         {
             // Force the use of cursors for all gamepads
@@ -1155,6 +1191,9 @@ namespace XSplitScreen
             if (!forceRefresh && eventSystem == self.lastEventSystem && eventSystem.currentInputSource == self.lastInputSource)
                 return;
 
+            //if (eventSystem.currentInputSource == MPEventSystem.InputSource.MouseAndKeyboard) // Removed for settings screen
+            //    return;
+
             if (self.useExplicitInputSource)
             {
                 InputBindingDisplayController.sharedStringBuilder.Clear();
@@ -1226,7 +1265,28 @@ namespace XSplitScreen
 
             return orig(playerSlot);
         }
+        private UserProfile BaseSettingsControl_GetCurrentUserProfile(On.RoR2.UI.BaseSettingsControl.orig_GetCurrentUserProfile orig, BaseSettingsControl self)
+        {
+            if (input.currentMouseEventSystem is null)
+                return orig(self);
+
+            return input.currentMouseEventSystem.localUser.userProfile;
+        }
+        private void ProfileNameLabel_LateUpdate(On.RoR2.UI.ProfileNameLabel.orig_LateUpdate orig, ProfileNameLabel self)
+        {
+            string str = input.currentMouseEventSystem?.localUser?.userProfile.name ?? string.Empty;
+
+            if (str == self.currentUserName)
+                return;
+
+            self.currentUserName = str;
+            self.label.text = RoR2.Language.GetStringFormatted(self.token, self.currentUserName);
+        }
         //private void GameEndReportPanelController_SetPlayerInfo(On.RoR2.UI.GameEndReportPanelController.) // End game player name
+        #endregion
+
+        #region Conditional Hooks
+
         #endregion
 
         #endregion
@@ -1288,6 +1348,8 @@ namespace XSplitScreen
 
             var screen = menu.AddComponent<XSplitScreenMenu>();
             screen.Initialize();
+            screen.onEnter.AddListener(ScreenOnEnter);
+            screen.onExit.AddListener(ScreenOnExit);
 
             menu.gameObject.SetActive(false);
         }
@@ -1872,6 +1934,18 @@ namespace XSplitScreen
                 if (!assignment.position.IsPositive())
                     assignment.controller = null;
 
+                List<Assignment> readonlyAssignments = assignments.AsReadOnly().ToList();
+
+                foreach (Assignment other in readonlyAssignments)
+                {
+                    if(other.position.Equals(assignment.position))
+                    {
+                        Assignment unassigned = other;
+                        unassigned.position = int2.negative;
+                        assignments[unassigned.playerId] = unassigned;
+                    }
+                }
+
                 assignments[assignment.playerId] = assignment;
             }
             public bool Save()
@@ -1932,6 +2006,15 @@ namespace XSplitScreen
                 {
                     if (assignment.isAssigned)
                     {
+                        foreach (Assignment other in configuration.assignments)
+                        {
+                            if (other.playerId == assignment.playerId)
+                                continue;
+
+                            if (other.position.Equals(assignment.position) && other.displayId == assignment.displayId)
+                                return false;
+                        }
+
                         if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count
                             || assignment.controller == null || assignment.displayId < 0 ||
                             assignment.displayId >= 1/*Display.displays.Length*/) // Disable multi monitor until ready
@@ -2127,6 +2210,7 @@ namespace XSplitScreen
                 color = assignment.color;
                 //profile = assignment.profile;
                 //isKeyboard = assignment.isKeyboard;
+                Log.LogDebug($"Preference.Update: preference = {this}");
             }
         }
         public struct Assignment

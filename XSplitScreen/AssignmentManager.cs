@@ -149,8 +149,6 @@ namespace XSplitScreen
         }
         public void OnAssignController(Icon icon)
         {
-            // TODO allow hot swapping controllers
-
             Screen closestScreen = null;
             float screenDistance = float.MaxValue;
             float maxDistance = 22f;
@@ -176,9 +174,6 @@ namespace XSplitScreen
 
             if (screenDistance <= maxDistance)
                 AssignController(icon.controller, closestScreen.position);
-
-            // TODO reassigning controllers isn't working properly
-            
         }
         public void OnBeginDragController()
         {
@@ -198,13 +193,7 @@ namespace XSplitScreen
             display.UpdateDisplayFollowers();
             display.CatchUpFollowers();
         }
-        // TODO
-
-        // Need to probably just rewrite it.
-        //
-        // Potential infinite loop involving events causing crash
-        // yeah just rewrite it
-        // rewriting it!
+        
         #endregion
 
         #region Assignments
@@ -228,7 +217,7 @@ namespace XSplitScreen
 
             PushToBuffer(nodeData);
             PushToConfiguration();
-            PrintGraph("AssignController");
+            //PrintGraph("Assign Controller");
         }
         public void UnassignController(int2 origin)
         {
@@ -323,7 +312,6 @@ namespace XSplitScreen
             var node = graph.GetNode(destination);
 
             // TODO
-            // Edge case: When unassigning a player with 4 players assigned then only shift the player with the lowest playerId
             // Bug: Controller not auto assigning?
 
             if (node.nodeType == NodeType.Secondary)
@@ -850,7 +838,9 @@ namespace XSplitScreen
                 centerEnabled = true;
 
                 bool canAddPlayer = configuration.assignedPlayerCount < configuration.maxLocalPlayers;
+
                 Log.LogDebug($"ScreenDisplay.OnConfigurationUpdated: configuration.assignedPlayerCount = '{configuration.assignedPlayerCount}'");
+
                 for (x = 0; x < data.Length; x++)
                 {
                     for(y = 0; y < data[x].Length; y++)
@@ -935,6 +925,9 @@ namespace XSplitScreen
             }
             public void OnClickScreenAddPlayer(MonoBehaviour mono)
             {
+                if (configuration.enabled)
+                    return;
+
                 Screen screen = (mono as XButton).transform.parent.GetComponent<Screen>();
 
                 if(screen != null)
@@ -1043,7 +1036,6 @@ namespace XSplitScreen
 
                 InitializeReferences();
                 InitializeUI();
-                ToggleListeners(true);
             }
             private void InitializeReferences()
             {
@@ -1052,19 +1044,7 @@ namespace XSplitScreen
             }
             private void InitializeUI()
             {
-                // Create 'PlayerPaneManager' and move panes around just like controller icons
 
-            }
-            private void ToggleListeners(bool status)
-            {
-                if(status)
-                {
-
-                }
-                else
-                {
-
-                }
             }
             #endregion
 
@@ -1079,6 +1059,10 @@ namespace XSplitScreen
         {
             #region Variables
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
+            private readonly string colorFormatString = "0:0.00";
+            private readonly Vector2 colorMinMax = new Vector2(0, 1);
+
+            private HGTextMeshProUGUI colorValueText;
 
             private Image backgroundImage;
             private Image removeIcon;
@@ -1087,6 +1071,8 @@ namespace XSplitScreen
             private Follower follower;
 
             private MPDropdown profileDropdown;
+
+            private Slider colorSlider;
 
             private Assignment assignment;
 
@@ -1178,6 +1164,28 @@ namespace XSplitScreen
                 settingsIcon.sprite = ControllerIconManager.instance.sprite_Gear;
                 settingsIcon.SetNativeSize();
                 settingsIcon.GetComponent<XButton>().onClickMono.AddListener(OnToggleSettings);
+
+                GameObject sliderPrefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<SettingsSlider>(true).gameObject;
+
+                colorSlider = Instantiate(sliderPrefab.transform.GetChild(4).gameObject, transform).GetComponentInChildren<Slider>();
+                colorSlider.transform.localScale = Vector3.one;
+                colorSlider.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 0);
+                colorSlider.name = "(Slider) Color";
+
+                colorSlider.minValue = colorMinMax.x;
+                colorSlider.maxValue = colorMinMax.y;
+                colorSlider.onValueChanged.AddListener(OnSliderValueChange);
+
+                //Destroy(colorSlider.GetComponent<Image>());
+                //Destroy(colorSlider.GetComponent<ConsoleFunctions>());
+                //Destroy(colorSlider.GetComponent<LayoutElement>());
+                //Destroy(colorSlider.GetComponent<ButtonSkinController>());
+                //Destroy(colorSlider.GetComponent<HGButton>());
+                //Destroy(colorSlider.transform.GetChild(0).gameObject);
+                //Destroy(colorSlider.transform.GetChild(1).gameObject);
+                //Destroy(colorSlider.transform.GetChild(2).gameObject);
+                //Destroy(colorSlider.transform.GetChild(3).gameObject);
+                
             }
             #endregion
 
@@ -1212,10 +1220,17 @@ namespace XSplitScreen
                 settingsIcon.gameObject.SetActive(follower.enabled);
 
                 SetSettingsOpen(false);
+
+                SetUILock(configuration.enabled);
             }
             #endregion
 
             #region Event Handlers
+            public void OnSliderValueChange(float value)
+            {
+
+            }
+
             public void OnToggleSettings(MonoBehaviour mono)
             {
                 settingsOpen = !settingsOpen;
@@ -1224,15 +1239,11 @@ namespace XSplitScreen
             }
             public void OnSplitScreenEnabled()
             {
-                removeIcon.sprite = ControllerIconManager.instance.sprite_Lock;
-                removeIcon.GetComponent<XButton>().interactable = false;
-                profileDropdown.interactable = false;
+                SetUILock(true);
             }
             public void OnSplitScreenDisabled()
             {
-                removeIcon.sprite = ControllerIconManager.instance.sprite_Xmark;
-                removeIcon.GetComponent<XButton>().interactable = true;
-                profileDropdown.interactable = true;
+                SetUILock(false);
             }
             public void OnProfileSelected(int profileId)
             {
@@ -1247,6 +1258,24 @@ namespace XSplitScreen
             #endregion
 
             #region UI
+            private void SetUILock(bool status)
+            {
+                if (status)
+                {
+                    SetSettingsOpen(false);
+                    removeIcon.sprite = ControllerIconManager.instance.sprite_Lock;
+                    removeIcon.GetComponent<XButton>().interactable = false;
+                    profileDropdown.interactable = false;
+                    settingsIcon.GetComponent<XButton>().interactable = false;
+                }
+                else
+                {
+                    removeIcon.sprite = ControllerIconManager.instance.sprite_Xmark;
+                    removeIcon.GetComponent<XButton>().interactable = true;
+                    profileDropdown.interactable = true;
+                    settingsIcon.GetComponent<XButton>().interactable = true;
+                }
+            }
             private void UpdateProfileDropdown()
             {
                 if (follower.enabled && !settingsOpen)
@@ -1289,11 +1318,12 @@ namespace XSplitScreen
             }
             private void SetSettingsOpen(bool status)
             {
-                Log.LogDebug($"PlayerPane.SetSettingsOpen: name = '{name}', status = '{status}'");
+                //Log.LogDebug($"PlayerPane.SetSettingsOpen: name = '{name}', status = '{status}'");
 
                 if (status)
                 {
                     settingsIcon.sprite = removeIcon.sprite;
+                    colorSlider.transform.parent.gameObject.SetActive(false);
 
                     foreach (Icon icon in ControllerIconManager.instance.icons)
                     {
@@ -1307,6 +1337,7 @@ namespace XSplitScreen
                 else
                 {
                     settingsIcon.sprite = ControllerIconManager.instance.sprite_Gear;
+                    colorSlider.transform.parent.gameObject.SetActive(false);
 
                     foreach (Icon icon in ControllerIconManager.instance.icons)
                     {

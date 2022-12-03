@@ -1,7 +1,7 @@
 ﻿{
 	"name": "XSplitScreen",
 	"version_number": "2.0.0",
-	"website_url": "",
+	"website_url": "https://discord.gg/maHhJSv62G",
 	"description": "Simple splitscreen mod",
 	"dependencies": [
 		"bbepis-BepInExPack-5.4.2103",
