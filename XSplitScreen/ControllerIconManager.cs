@@ -32,6 +32,7 @@ namespace XSplitScreen
         //public Sprite sprite_Checkmark { get; private set; }
         public Sprite sprite_Xmark { get; private set; }
         public Sprite sprite_Lock { get; private set; }
+        public Sprite sprite_Gear { get; private set; }
 
         public IconEvent onStartDragIcon { get; private set; }
         public IconEvent onStopDragIcon { get; private set; }
@@ -45,6 +46,7 @@ namespace XSplitScreen
         //private Texture2D texture_Checkmark;
         private Texture2D texture_Xmark;
         private Texture2D texture_Lock;
+        private Texture2D texture_Gear;
 
         private RectTransform iconPrefab;
         private RectTransform iconContainer;
@@ -89,6 +91,7 @@ namespace XSplitScreen
             //texture_Checkmark = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/checkmark.png");
             texture_Xmark = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/xmark.png");
             texture_Lock = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/lock.png");
+            texture_Gear = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/gear.png");
 
             sprite_Dinput = Sprite.Create(texture_Dinput, new Rect(Vector2.zero, new Vector2(texture_Dinput.width, texture_Dinput.height)), Vector2.zero);
             sprite_Xinput = Sprite.Create(texture_Xinput, new Rect(Vector2.zero, new Vector2(texture_Xinput.width, texture_Xinput.height)), Vector2.zero);
@@ -97,6 +100,7 @@ namespace XSplitScreen
             //sprite_Checkmark = Sprite.Create(texture_Checkmark, new Rect(Vector2.zero, new Vector2(texture_Checkmark.width, texture_Checkmark.height)), Vector2.zero);
             sprite_Xmark = Sprite.Create(texture_Xmark, new Rect(Vector2.zero, new Vector2(texture_Xmark.width, texture_Xmark.height)), Vector2.zero);
             sprite_Lock = Sprite.Create(texture_Lock, new Rect(Vector2.zero, new Vector2(texture_Lock.width, texture_Lock.height)), Vector2.zero);
+            sprite_Gear = Sprite.Create(texture_Gear, new Rect(Vector2.zero, new Vector2(texture_Gear.width, texture_Gear.height)), Vector2.zero);
 
             icons = new List<Icon>();
 
@@ -278,7 +282,8 @@ namespace XSplitScreen
             public Follower cursorFollower;
             public Follower displayFollower; // use only cursorFollower to allow reassignment 
 
-            public XButton button;
+            public XButton iconButton;
+            public XButton displayButton;
 
             public IconEvent onStartDragIcon { get; private set; }
             public IconEvent onStopDragIcon { get; private set; }
@@ -298,6 +303,7 @@ namespace XSplitScreen
             public bool potentialReassignment = false;
             public bool showStatusImage = false;
             public bool hasTemporaryAssignment = false;
+            public bool hideDisplayImage = false;
 
             private Vector4 targetColor = new Vector4(1, 1, 1, 0);
             private Vector4 statusColor = Color.clear;
@@ -336,7 +342,8 @@ namespace XSplitScreen
 
                 cursorImage.color = Color.Lerp(cursorImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
 
-                if(displayFollower.enabled)
+                // displayImage needs to fade out when settings is being edited
+                if(displayFollower.enabled && !hideDisplayImage)
                     displayImage.color = Color.Lerp(displayImage.color, targetColor, Time.unscaledDeltaTime * colorSpeed);
                 else
                     displayImage.color = Color.Lerp(displayImage.color, new Vector4(targetColor.x, targetColor.y, targetColor.z, 0f), Time.unscaledDeltaTime * colorSpeed);
@@ -366,7 +373,7 @@ namespace XSplitScreen
                 displayFollower = new GameObject($"(Display Follower) {controller.name}", typeof(RectTransform), typeof(Image), typeof(Follower), typeof(XButton)).GetComponent<Follower>();
                 displayFollower.transform.SetParent(followerContainer);
                 displayFollower.transform.localScale = Vector3.one * (controller.type == ControllerType.Keyboard ? 0.27f : 0.19f);
-                displayFollower.movementSpeed = iconFollowerSpeed;
+                displayFollower.movementSpeed = iconFollowerSpeed * 0.4f;
                 displayFollower.smoothMovement = true;
                 displayFollower.target = GetComponent<RectTransform>();
                 displayFollower.CatchUp();
@@ -376,7 +383,7 @@ namespace XSplitScreen
 
                 displayFollower.enabled = false;
 
-                XButton displayButton = displayFollower.GetComponent<XButton>();
+                displayButton = displayFollower.GetComponent<XButton>();
                 displayButton.onPointerDown.AddListener(OnPointerDownIcon);
                 displayButton.onClickMono.AddListener(OnClickIcon);
 
@@ -392,13 +399,13 @@ namespace XSplitScreen
                 iconFollower.smoothMovement = true;
                 //iconFollower.transform.localPosition = new Vector3(Screen.width / 2f, Screen.height / 2f, 0);
                 
-                button = iconFollower.GetComponent<XButton>();
-                button.allowAllEventSystems = true;
-                button.onPointerDown.AddListener(OnPointerDownIcon);
-                button.onClickMono.AddListener(OnClickIcon);
+                iconButton = iconFollower.GetComponent<XButton>();
+                iconButton.allowAllEventSystems = true;
+                iconButton.onPointerDown.AddListener(OnPointerDownIcon);
+                iconButton.onClickMono.AddListener(OnClickIcon);
 
-                button.onHoverStart.AddListener(OnHoverStart);
-                button.onHoverStop.AddListener(OnHoverStop);
+                iconButton.onHoverStart.AddListener(OnHoverStart);
+                iconButton.onHoverStop.AddListener(OnHoverStop);
 
                 GameObject statusObject = new GameObject("(Image) Status", typeof(RectTransform));
                 statusObject.transform.SetParent(iconFollower.transform);
@@ -421,13 +428,13 @@ namespace XSplitScreen
                 cursorFollower.destroyOnTargetLost = true;
                 cursorFollower.smoothMovement = true;
                 
-                button = cursorFollower.GetComponent<XButton>();
-                button.allowAllEventSystems = true;
-                button.allowOutsiderOnPointerUp = true;
-                button.onPointerUp.AddListener(OnPointerUpCursor);
-                button.onClickMono.AddListener(OnClickCursor);
+                iconButton = cursorFollower.GetComponent<XButton>();
+                iconButton.allowAllEventSystems = true;
+                iconButton.allowOutsiderOnPointerUp = true;
+                iconButton.onPointerUp.AddListener(OnPointerUpCursor);
+                iconButton.onClickMono.AddListener(OnClickCursor);
 
-                button.allowOutsiderOnPointerUp = true;
+                iconButton.allowOutsiderOnPointerUp = true;
 
                 cursorImage = cursorFollower.GetComponent<Image>();
                 cursorImage.color = targetColor;
@@ -445,13 +452,25 @@ namespace XSplitScreen
                 cursorImage.sprite = deviceImage.sprite;
                 cursorImage.SetNativeSize();
 
-                button = iconFollower.GetComponent<XButton>();
+                iconButton = iconFollower.GetComponent<XButton>();
 
                 UpdateStatus();
             }
             #endregion
 
             #region Display & Icon
+            public void ToggleDisplayImage(bool status)
+            {
+                hideDisplayImage = !status;
+
+                if (hideDisplayImage)
+                    displayImage.raycastTarget = false;
+                else
+                {
+                    if (displayFollower.enabled)
+                        displayImage.raycastTarget = true;
+                }
+            }
             public void SetReassignmentStatus(bool status)
             {
                 potentialReassignment = status;
@@ -509,7 +528,7 @@ namespace XSplitScreen
             #region Events
             public void OnSplitScreenEnabled()
             {
-                button.interactable = false;
+                iconButton.interactable = false;
                 displayFollower.GetComponent<XButton>().interactable = false;
                 cursorFollower.gameObject.SetActive(false);
                 hasTemporaryAssignment = false;
@@ -517,7 +536,7 @@ namespace XSplitScreen
             }
             public void OnSplitScreenDisabled()
             {
-                button.interactable = true;
+                iconButton.interactable = true;
                 displayFollower.GetComponent<XButton>().interactable = true;
             }
             public void OnHoverStart(MonoBehaviour mono)
@@ -580,9 +599,6 @@ namespace XSplitScreen
             }
             #endregion
         }
-        #endregion
-
-        #region Definitions
         public class IconEvent : UnityEvent<Icon> { }
         #endregion
     }

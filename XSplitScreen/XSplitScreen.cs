@@ -48,7 +48,7 @@ namespace XSplitScreen
         public static Input input { get; private set; }
         public static GameObject buttonTemplate { get; private set; }
 
-        private static readonly bool developerMode = false;
+        private static readonly bool developerMode = true;
 
         private static Coroutine WaitForMenuRoutine;
         private static Coroutine WaitForRewiredRoutine;

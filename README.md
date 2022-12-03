@@ -6,43 +6,48 @@ https://discord.gg/maHhJSv62G
 
 # Instructions
 
-1. Install the plugin and after launching the game click the XSplitScreen button in the main menu
+1. Launch the game and click on 'Splitscreen' above 'Singleplayer' in the title menu
 
-2. Drag controllers to the desired screens
+2. Assign players and customize
 
-3. Click the Profiles button and assign profiles
+3. Enable the mod
 
-4. Modify options as needed
+## Features
 
-# Console commands
-
-Commands that affect local users can only be used in the main menu
+- Supports 4 splitscreen players
+- Full UI with icon designs by Claymaver
+- Persistent assignments
 
 ## Planned
 
-- Profile selection window
-- Configure controller assignment
-- Multi monitor support
-- Keyboard mode button
-- Risk of Options support
-- Config customization for default settings
+- Multiple monitor support
+- Inverted gamepad controls
+- Custom colors
+- Splitscreen artifacts
 
 ## Known Bugs
 
-- v1.2.0 may break other mods that manipulate the camera. This is being worked on. If you experience problems fall back to v1.1.2
-- Opening rule panels do not work for gamepads but selecting the rules themselves do. Try using the mouse for now
-- Occasionally loadouts aren't saved to the correct character
-- Multiple gamepads with no keyboard is untested or broken
+- Profiles 'forget' the last used character
+- Local users can change the loadouts of the current character
+- Some buttons can still become unbound when entering a run
 
 ## Special thanks
 
 - iDeathHD for creating FixedSplitScreen
+- Claymaver for art assets
 
 ## Changelog
 
 **2.0.0**
 
-- Enabled the assignment window
+- Added UI assignment screen
+- Changed player names to reflect local profile name
+- Changed player highlights to reflect preferred color
+- Changed cursor center to the center of assigned screen
+- Fixed gamepad cursors
+- Fixed character selection
+- Fixed most keybinds not being loaded
+- Mod now uses BepInEx log and config file to store preferences
 
 **1.2.1**
 

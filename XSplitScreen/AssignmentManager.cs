@@ -613,11 +613,11 @@ namespace XSplitScreen
             #region Variables
             public static ScreenDisplay instance { get; private set; }
 
-            public readonly int2 screenDimensions = new int2(135, 135);
+            public readonly int2 screenDimensions = new int2(129, 129);//135, 135);
             
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
 
-            private const float dividerFadeSpeed = 2f;
+            private const float dividerFadeSpeed = 20f;
 
             public List<Screen> screens { get; private set; }
             public Sprite sprite_display { get; private set; }
@@ -985,7 +985,7 @@ namespace XSplitScreen
         public class Screen : MonoBehaviour
         {
             #region Variables
-            public static readonly float fadeSpeed = 20f;
+            public static readonly float fadeSpeed = 30f;
 
             public RectTransform rectTransform;
 
@@ -1080,14 +1080,17 @@ namespace XSplitScreen
             #region Variables
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
 
-            private Image background;
-            private Image remove;
+            private Image backgroundImage;
+            private Image removeIcon;
+            private Image settingsIcon;
 
             private Follower follower;
 
             private MPDropdown profileDropdown;
 
             private Assignment assignment;
+
+            private bool settingsOpen = false;
             #endregion
 
             #region Unity Methods
@@ -1100,11 +1103,11 @@ namespace XSplitScreen
             {
                 if (follower.enabled)
                 {
-                    background.color = Color.Lerp(background.color, Color.white, Time.unscaledDeltaTime * Screen.fadeSpeed);
+                    backgroundImage.color = Color.Lerp(backgroundImage.color, Color.white, Time.unscaledDeltaTime * Screen.fadeSpeed);
                 }
                 else
                 {
-                    background.color = Color.Lerp(background.color, disabledColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
+                    backgroundImage.color = Color.Lerp(backgroundImage.color, disabledColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
                 }
             }
             public void OnDestroy()
@@ -1125,20 +1128,24 @@ namespace XSplitScreen
                 playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.445f;//0.425f;
                 playerPaneBackgroundObject.transform.localPosition = Vector3.zero;
 
-                background = playerPaneBackgroundObject.GetComponent<Image>();
-                background.sprite = instance.display.sprite_display_screen;
-                background.SetNativeSize();
-                background.raycastTarget = false;
-                background.color = disabledColor;
+                backgroundImage = playerPaneBackgroundObject.GetComponent<Image>();
+                backgroundImage.sprite = instance.display.sprite_display_screen;
+                backgroundImage.SetNativeSize();
+                backgroundImage.raycastTarget = false;
+                backgroundImage.color = disabledColor;
 
                 follower = gameObject.GetComponent<Follower>();
                 follower.smoothMovement = true;
-                follower.movementSpeed = .45f;
+                follower.movementSpeed = .2f;//.45f;
 
                 InitializePane();
             }
             private void InitializePane()
             {
+                // TODO create slider for custom color
+                // fix player names
+                // ??
+
                 GameObject prefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<MPDropdown>(true).gameObject;
 
                 profileDropdown = Instantiate(prefab, transform).GetComponent<MPDropdown>();
@@ -1156,13 +1163,21 @@ namespace XSplitScreen
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
 
-                remove = new GameObject("(XButton) Remove Player", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
-                remove.transform.SetParent(transform);
-                remove.transform.localScale = Vector3.one * 0.2f;
-                remove.transform.localPosition = new Vector3(75f, 75f, 0f);
-                remove.sprite = ControllerIconManager.instance.sprite_Xmark;
-                remove.SetNativeSize();
-                remove.GetComponent<XButton>().onClickMono.AddListener(OnRemovePlayer);
+                removeIcon = new GameObject("(XButton) Remove", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
+                removeIcon.transform.SetParent(transform);
+                removeIcon.transform.localScale = Vector3.one * 0.18f;//0.2f;
+                removeIcon.transform.localPosition = new Vector3(75f, 75f, 0f);
+                removeIcon.sprite = ControllerIconManager.instance.sprite_Xmark;
+                removeIcon.SetNativeSize();
+                removeIcon.GetComponent<XButton>().onClickMono.AddListener(OnRemovePlayer);
+
+                settingsIcon = new GameObject("(XButton) Settings", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
+                settingsIcon.transform.SetParent(transform);
+                settingsIcon.transform.localScale = Vector3.one * 0.08f;
+                settingsIcon.transform.localPosition = new Vector3(-75f, 75f, 0f);
+                settingsIcon.sprite = ControllerIconManager.instance.sprite_Gear;
+                settingsIcon.SetNativeSize();
+                settingsIcon.GetComponent<XButton>().onClickMono.AddListener(OnToggleSettings);
             }
             #endregion
 
@@ -1173,7 +1188,7 @@ namespace XSplitScreen
             }
             public void LoadAssignment(Assignment assignment, Screen screen, bool resetPosition = false)
             {
-                if(resetPosition) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center!
+                if(false) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center!
                 {
                     follower.target = transform.parent.GetComponent<RectTransform>();
                     follower.CatchUp();
@@ -1182,6 +1197,7 @@ namespace XSplitScreen
                 follower.target = screen.GetComponent<RectTransform>();
                 follower.enabled = true;
                 this.assignment = assignment;
+
                 UpdateUI();
             }
             public void ClearAssignment()
@@ -1192,11 +1208,51 @@ namespace XSplitScreen
             private void UpdateUI()
             {
                 profileDropdown.gameObject.SetActive(follower.enabled);
-                remove.gameObject.SetActive(follower.enabled);
+                removeIcon.gameObject.SetActive(follower.enabled);
+                settingsIcon.gameObject.SetActive(follower.enabled);
 
-                if (follower.enabled)
+                SetSettingsOpen(false);
+            }
+            #endregion
+
+            #region Event Handlers
+            public void OnToggleSettings(MonoBehaviour mono)
+            {
+                settingsOpen = !settingsOpen;
+
+                SetSettingsOpen(settingsOpen);
+            }
+            public void OnSplitScreenEnabled()
+            {
+                removeIcon.sprite = ControllerIconManager.instance.sprite_Lock;
+                removeIcon.GetComponent<XButton>().interactable = false;
+                profileDropdown.interactable = false;
+            }
+            public void OnSplitScreenDisabled()
+            {
+                removeIcon.sprite = ControllerIconManager.instance.sprite_Xmark;
+                removeIcon.GetComponent<XButton>().interactable = true;
+                profileDropdown.interactable = true;
+            }
+            public void OnProfileSelected(int profileId)
+            {
+                instance.SetProfile(profileId - 1, assignment.position);
+                //MPEventSystem.current.SetSelectedGameObject(null);
+            }
+            public void OnRemovePlayer(MonoBehaviour mono)
+            {
+                instance.OnClickScreenRemovePlayer(ScreenDisplay.instance.screens[Utils.FlatIndexFrom2D(assignment.position, configuration.graphDimensions.x, false)]);
+                //instance.RemovePlayer()
+            }
+            #endregion
+
+            #region UI
+            private void UpdateProfileDropdown()
+            {
+                if (follower.enabled && !settingsOpen)
                 {
                     profileDropdown.onValueChanged.RemoveAllListeners();
+
                     List<string> options = new List<string>();
 
                     options.Add(" - Select Profile -");
@@ -1209,14 +1265,6 @@ namespace XSplitScreen
                         id++;
                         options.Add(keyPair.Value.name);
                     }
-                    // TODO
-                    // Add remove player button (regular xbutton, will need shiftlinear)
-                    // enableDivider should look at neighbors for main nodes to determine whether it should display
-                    // only show addplayer buttons when mouse near display?
-                    // Color selection (draggable from settings)
-                    // Controller drag & drop
-                    // Switch display
-                    // Enable splitscreen!
 
                     profileDropdown.ClearOptions();
                     profileDropdown.AddOptions(options);
@@ -1224,38 +1272,60 @@ namespace XSplitScreen
                     if (assignment.profileId > -1)
                         profileDropdown.value = assignment.profileId + 1;
 
+                    profileDropdown.gameObject.SetActive(true);
                     profileDropdown.onValueChanged.AddListener(OnProfileSelected);
                 }
-
-                if (configuration.localPlayerCount == 1)
-                    remove.enabled = false;
                 else
-                    remove.enabled = true;
+                {
+                    profileDropdown.gameObject.SetActive(false);
+                }
             }
-            #endregion
+            private void UpdateRemoveIcon()
+            {
+                if (configuration.localPlayerCount == 1 || settingsOpen)
+                    removeIcon.enabled = false;
+                else
+                    removeIcon.enabled = true;
+            }
+            private void SetSettingsOpen(bool status)
+            {
+                Log.LogDebug($"PlayerPane.SetSettingsOpen: name = '{name}', status = '{status}'");
 
-            #region Event Handlers
-            public void OnSplitScreenEnabled()
-            {
-                remove.sprite = ControllerIconManager.instance.sprite_Lock;
-                remove.GetComponent<XButton>().interactable = false;
-                profileDropdown.interactable = false;
+                if (status)
+                {
+                    settingsIcon.sprite = removeIcon.sprite;
+
+                    foreach (Icon icon in ControllerIconManager.instance.icons)
+                    {
+                        if (icon.controller.Equals(assignment.controller))
+                        {
+                            icon.ToggleDisplayImage(false);
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    settingsIcon.sprite = ControllerIconManager.instance.sprite_Gear;
+
+                    foreach (Icon icon in ControllerIconManager.instance.icons)
+                    {
+                        if (icon.controller.Equals(assignment.controller))
+                        {
+                            icon.ToggleDisplayImage(true);
+                            break;
+                        }
+                    }
+                }
+
+                settingsOpen = status;
+
+                UpdateProfileDropdown();
+                UpdateRemoveIcon();
             }
-            public void OnSplitScreenDisabled()
+            private void UpdateSettingsUI(bool status)
             {
-                remove.sprite = ControllerIconManager.instance.sprite_Xmark;
-                remove.GetComponent<XButton>().interactable = true;
-                profileDropdown.interactable = true;
-            }
-            public void OnProfileSelected(int profileId)
-            {
-                instance.SetProfile(profileId - 1, assignment.position);
-                //MPEventSystem.current.SetSelectedGameObject(null);
-            }
-            public void OnRemovePlayer(MonoBehaviour mono)
-            {
-                instance.OnClickScreenRemovePlayer(ScreenDisplay.instance.screens[Utils.FlatIndexFrom2D(assignment.position, configuration.graphDimensions.x, false)]);
-                //instance.RemovePlayer()
+
             }
             #endregion
         }
