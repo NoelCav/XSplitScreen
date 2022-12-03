@@ -34,7 +34,7 @@ https://discord.gg/maHhJSv62G
 ## Special thanks
 
 - iDeathHD for creating FixedSplitScreen
-- Claymaver for art assets
+- Claymaver for art assets (https://linktr.ee/claymaver)
 
 ## Changelog
 
