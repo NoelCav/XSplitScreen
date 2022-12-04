@@ -253,7 +253,7 @@ namespace XSplitScreen
         }
         private void AddPlayer(Screen screen)
         {
-            if (configuration.localPlayerCount == configuration.maxLocalPlayers)
+            if (configuration.currentLocalPlayerCount == configuration.maxLocalPlayers)
                 return;
 
             changeBuffer.Clear();
@@ -284,7 +284,7 @@ namespace XSplitScreen
         }
         private void RemovePlayer(Screen screen)
         {
-            Log.LogDebug($"AssignmentManager.RemovePlayer: configuration.localPlayerCount = '{configuration.localPlayerCount}'");
+            Log.LogDebug($"AssignmentManager.RemovePlayer: configuration.localPlayerCount = '{configuration.currentLocalPlayerCount}'");
             if (configuration.assignedPlayerCount == 1)
                 return;
 
@@ -1022,7 +1022,7 @@ namespace XSplitScreen
             #region Unity Methods
             public void Update()
             {
-                if(showAddPlayerButton && configuration.localPlayerCount < configuration.maxLocalPlayers)
+                if(showAddPlayerButton && configuration.currentLocalPlayerCount < configuration.maxLocalPlayers)
                     addPlayerImage.color = Color.Lerp(addPlayerImage.color, addPlayerTargetColor, Time.unscaledDeltaTime * fadeSpeed);
                 else
                     addPlayerImage.color = Color.Lerp(addPlayerImage.color, disabledColor, Time.unscaledDeltaTime * fadeSpeed);
@@ -1311,7 +1311,7 @@ namespace XSplitScreen
             }
             private void UpdateRemoveIcon()
             {
-                if (configuration.localPlayerCount == 1 || settingsOpen)
+                if (configuration.currentLocalPlayerCount == 1 || settingsOpen)
                     removeIcon.enabled = false;
                 else
                     removeIcon.enabled = true;

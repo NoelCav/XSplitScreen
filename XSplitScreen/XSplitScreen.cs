@@ -69,7 +69,6 @@ namespace XSplitScreen
                 Destroy(this);
 
             WaitForRewiredRoutine = StartCoroutine(WaitForRewired());
-            //Initialize(); // Moved to LateUpdate() 11/27/22 - Scene switch bug
         }
         public void OnDestroy()
         {
@@ -118,7 +117,6 @@ namespace XSplitScreen
             InitializeReferences();
 
             TogglePersistentListeners(true);
-            //ToggleUIListeners(true); // Disabled 11/27/22 - Scene switch bug
 
             if (developerMode)
             {
@@ -128,7 +126,6 @@ namespace XSplitScreen
                 WaitForMenuRoutine = StartCoroutine(WaitForMenu());
             }
 
-            // crashing when reconnect controller on scene switch
         }
         private void InitializeLanguage()
         {
@@ -178,7 +175,6 @@ namespace XSplitScreen
 
             TogglePersistentListeners(false);
             ToggleConditionalHooks(false);
-            //ToggleUIListeners(false); // Disabled 11/27/22 - Scene switch bug
 
             if (titleButton != null)
                 Destroy(titleButton?.gameObject);
@@ -192,23 +188,6 @@ namespace XSplitScreen
         #endregion
 
         #region Hooks & Event Handlers
-        // TODO remove this once we're certain it's not needed
-        private void ToggleUIListeners(bool status)
-        {
-            if (MainMenuController.instance?.titleMenuScreen is null)
-                return;
-
-            if (status)
-            {
-                MainMenuController.instance.titleMenuScreen.onEnter.AddListener(ScreenOnEnter);
-                MainMenuController.instance.titleMenuScreen.onExit.AddListener(ScreenOnExit);
-            }
-            else
-            {
-                MainMenuController.instance.titleMenuScreen.onEnter.RemoveListener(ScreenOnEnter);
-                MainMenuController.instance.titleMenuScreen.onExit.RemoveListener(ScreenOnExit);
-            }
-        }
 
         #region Persistent
         private void TogglePersistentListeners(bool status)
@@ -233,8 +212,6 @@ namespace XSplitScreen
 
                 WaitForMenuRoutine = StartCoroutine(WaitForMenu());
                 Log.LogDebug($"XSplitScreen.ActiveSceneChanged: Started coroutine");
-                //ToggleUIListeners(true); // as below
-                //ScreenOnEnter(); // Disabled 11/27/22 - Scene switch bug
             }
             else
             {
@@ -242,18 +219,11 @@ namespace XSplitScreen
                 {
                     user.ApplyUserProfileBindingsToRewiredPlayer();
                 }
-                //ToggleUIListeners(false); // as below
-                //ScreenOnExit(); // Disabled 11/27/22 - Scene switch bug
             }
         }
         private void ScreenOnEnter()
         {
             ToggleConditionalHooks();
-
-            //if (WaitForMenu != null) // Disabled 11/27/22 - Scene switch bug
-            //    StopCoroutine(WaitForMenuRoutine); // Disabled 11/27/22 - Scene switch bug
-
-            //WaitForMenuRoutine = StartCoroutine(WaitForMenu()); // Disabled 11/27/22 - Scene switch bug
         }
         private void ScreenOnExit()
         {
@@ -266,6 +236,8 @@ namespace XSplitScreen
         {
             input.UpdateCurrentEventSystem(LocalUserManager.GetFirstLocalUser().eventSystem);
             input.UpdateCurrentEventSystem(LocalUserManager.GetFirstLocalUser().eventSystem, true);
+
+            // TODO organize
 
             if (status)
             {
@@ -287,7 +259,6 @@ namespace XSplitScreen
                 On.RoR2.UI.SurvivorIconController.Update += SurvivorIconController_Update;
                 On.RoR2.UI.SurvivorIconController.UpdateAvailability += SurvivorIconController_UpdateAvailability;
 
-                // TODO fix vote counting
                 On.RoR2.UI.RuleChoiceController.FindNetworkUser += RuleChoiceController_FindNetworkUser;
 
                 On.RoR2.UI.LoadoutPanelController.UpdateDisplayData += LoadoutPanelController_UpdateDisplayData;
@@ -305,7 +276,7 @@ namespace XSplitScreen
 
                 On.RoR2.UI.Nameplate.LateUpdate += Nameplate_LateUpdate;
 
-                On.RoR2.InputBindingDisplayController.Refresh += InputBindingDisplayController_Refresh; // HERE
+                On.RoR2.InputBindingDisplayController.Refresh += InputBindingDisplayController_Refresh;
 
                 On.RoR2.ColorCatalog.GetMultiplayerColor += ColorCatalog_GetMultiplayerColor;
 
@@ -321,6 +292,7 @@ namespace XSplitScreen
 
                 On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
 
+                On.RoR2.UI.RuleCategoryController.SetRandomVotes += RuleCategoryController_SetRandomVotes;
                 /* // Controller navigation requires layer keys
 
                 On.RoR2.UI.InputSourceFilter.Refresh += InputSourceFilter_Refresh;
@@ -377,7 +349,7 @@ namespace XSplitScreen
 
                 On.RoR2.UI.BaseSettingsControl.GetCurrentUserProfile -= BaseSettingsControl_GetCurrentUserProfile;
 
-                On.RoR2.UI.ProfileNameLabel.LateUpdate += ProfileNameLabel_LateUpdate;
+                On.RoR2.UI.ProfileNameLabel.LateUpdate -= ProfileNameLabel_LateUpdate;
 
                 On.RoR2.SubjectChatMessage.GetSubjectName -= SubjectChatMessage_GetSubjectName;
 
@@ -385,7 +357,9 @@ namespace XSplitScreen
 
                 On.RoR2.UI.InputBindingControl.StartListening -= InputBindingControl_StartListening;
 
-                On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
+                On.RoR2.UI.ScoreboardController.Awake -= ScoreboardController_Awake;
+
+                On.RoR2.UI.RuleCategoryController.SetRandomVotes -= RuleCategoryController_SetRandomVotes;
 
                 /*
                 On.RoR2.UI.HGGamepadInputEvent.Update -= HGGamepadInputEvent_Update;
@@ -459,8 +433,6 @@ namespace XSplitScreen
         }
         private void MPButton_Awake(On.RoR2.UI.MPButton.orig_Awake orig, MPButton self)
         {
-            // TODO - Unused -
-            //self.onClick.AddListener(MPButton_OnSubmit);
             self.disableGamepadClick = false;
             self.disablePointerClick = false;
             orig(self);
@@ -597,8 +569,6 @@ namespace XSplitScreen
 
             if (mouseInputSource == null)
             {
-                //if (playerId > 0)
-                //    Log.LogDebug($"MPInputModule_GetMousePointerEventData: '{playerId}' mouseInputSource is null");
                 return null;
             }
 
@@ -807,13 +777,13 @@ namespace XSplitScreen
             // Update the local user to the player who last interacted with the UI
 
             if (input.currentButtonEventSystem)
-                self.localUser = input.currentButtonEventSystem.localUser;
+                self.localUser = input.currentMouseEventSystem.localUser;
 
             orig(self);
         }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
         {
-            // Use input.currentEventSystem
+            // Update the local user to the player who last interacted with the UI
 
             if (self.pickedIcon == newPickedIcon)
                 return;
@@ -901,8 +871,8 @@ namespace XSplitScreen
         {
             // Use input.currentEventSystem
 
-            UserProfile userProfile = input.currentButtonEventSystem?.localUser?.userProfile;
-            NetworkUser currentNetworkUser = input.currentButtonEventSystem?.localUser?.currentNetworkUser;
+            UserProfile userProfile = input.currentMouseEventSystem?.localUser?.userProfile;
+            NetworkUser currentNetworkUser = input.currentMouseEventSystem?.localUser?.currentNetworkUser;
 
             BodyIndex bodyIndex = (currentNetworkUser) ? currentNetworkUser.bodyIndexPreference : BodyIndex.None;
 
@@ -1003,7 +973,7 @@ namespace XSplitScreen
         private void LocalCameraEffect_OnUICameraPreCull(On.RoR2.LocalCameraEffect.orig_OnUICameraPreCull orig, UICamera uiCamera)
         {
             // Disable death effect for players still alive
-
+            // TODO this is broken
             for (int index = 0; index < LocalCameraEffect.instancesList.Count; index++)
             {
                 GameObject target = uiCamera?.cameraRigController?.target;
@@ -1021,7 +991,7 @@ namespace XSplitScreen
         }
         private void CombatHealthBarViewer_SetLayoutHorizontal(On.RoR2.UI.CombatHealthBarViewer.orig_SetLayoutHorizontal orig, RoR2.UI.CombatHealthBarViewer self)
         {
-            // iDeathHD fix
+            // Another iDeathHD fix
 
             UICamera uiCamera = self.uiCamera;
 
@@ -1043,6 +1013,7 @@ namespace XSplitScreen
         }
         private NetworkPlayerName NetworkUser_GetNetworkPlayerName(On.RoR2.NetworkUser.orig_GetNetworkPlayerName orig, RoR2.NetworkUser self)
         {
+            // TODO is this necessary?
             NetworkPlayerName name = new NetworkPlayerName()
             {
                 nameOverride = self.id.strValue != null ? self.id.strValue : (string)null,
@@ -1275,7 +1246,6 @@ namespace XSplitScreen
             self.currentUserName = str;
             self.label.text = RoR2.Language.GetStringFormatted(self.token, self.currentUserName);
         }
-        //private void GameEndReportPanelController_SetPlayerInfo(On.RoR2.UI.GameEndReportPanelController.) // End game player name
         private string Util_GetBestMasterName(On.RoR2.Util.orig_GetBestMasterName orig, CharacterMaster characterMaster)
         {
             if (!characterMaster)
@@ -1332,6 +1302,33 @@ namespace XSplitScreen
         {
             orig(self);
             self.transform.GetComponentInChildren<PostProcessDuration>().gameObject.SetActive(false);
+        }
+        private void RuleCategoryController_SetRandomVotes(On.RoR2.UI.RuleCategoryController.orig_SetRandomVotes orig, RuleCategoryController self)
+        {
+            PreGameRuleVoteController forUser = PreGameRuleVoteController.FindForUser(input.currentMouseEventSystem?.localUser?.currentNetworkUser);
+
+            if (!forUser)
+                return;
+
+            List<RuleChoiceDef> ruleChoiceDefList = new List<RuleChoiceDef>();
+
+            foreach (RuleDef child in self.currentCategory.children)
+            {
+                ruleChoiceDefList.Clear();
+
+                foreach (RuleChoiceDef choice in child.choices)
+                {
+                    if (self.cachedAvailability[choice.globalIndex])
+                        ruleChoiceDefList.Add(choice);
+                }
+
+                int choiceValue = -1;
+
+                if (ruleChoiceDefList.Count > 0 && UnityEngine.Random.value > 0.5)
+                    choiceValue = ruleChoiceDefList[UnityEngine.Random.Range(0, ruleChoiceDefList.Count)].localIndex;
+
+                forUser.SetVote(child.globalIndex, choiceValue);
+            }
         }
 
         private void InputBindingControl_Update_IL(bool status)
@@ -1410,7 +1407,6 @@ namespace XSplitScreen
                 };
             }
         }
-        //private void InputBindingControl_Update(On.RoR2.UI.InputBindingControl)
         #endregion
 
         #region Conditional Hooks
@@ -1505,7 +1501,7 @@ namespace XSplitScreen
         private bool SetEnabled(bool status, out int localPlayerCount)
         {
             if (configuration != null)
-                localPlayerCount = configuration.localPlayerCount;
+                localPlayerCount = configuration.currentLocalPlayerCount;
             else
                 localPlayerCount = 0;
 
@@ -1522,8 +1518,6 @@ namespace XSplitScreen
 
             ToggleSplitScreenHooks(status);
             
-            // Hook everything 
-            // MPButton: maybe adding a component will fix it? will XButton function as a child?
             return true;
         }
         private bool LogInUsers(UserProfile[] profiles, bool status, out int localPlayerCount)
@@ -1553,7 +1547,7 @@ namespace XSplitScreen
                     {
                         localUsers.Add(new LocalUserManager.LocalUserInitializationInfo()
                         {
-                            player = ReInput.players.GetPlayer(localId),//assignment.playerId + 1),
+                            player = ReInput.players.GetPlayer(localId),
                             profile = profiles[assignment.profileId],
                         });
 
@@ -1618,7 +1612,7 @@ namespace XSplitScreen
                 if (!assignment.isAssigned || assignment.localId < 0)
                     continue;
 
-                int playerIndex = assignment.localId;//assignment.playerId;
+                int playerIndex = assignment.localId;
 
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.ClearAllControllers();
 
@@ -1673,7 +1667,6 @@ namespace XSplitScreen
             foreach (Player player in ReInput.players.AllPlayers)
             {
                 
-                //Print($" - {player.name}");
                 foreach (Controller controller in player.controllers.Controllers)
                 {
                     Log.LogDebug($"XSplitScreen.PrintControllers: '{player.name}' <- '{controller.name}'");
@@ -1737,7 +1730,7 @@ namespace XSplitScreen
             public Action<ControllerStatusChangedEventArgs> onControllerConnected;
             public Action<ControllerStatusChangedEventArgs> onControllerDisconnected;
 
-            public List<Assignment> assignments { get; private set; } // TODO private
+            public List<Assignment> assignments { get; private set; }
             public List<Controller> controllers { get; private set; }
 
             public int2 graphDimensions { get; private set; }
@@ -1759,7 +1752,7 @@ namespace XSplitScreen
                     return value;
                 }
             }
-            public int localPlayerCount { get; private set; }
+            public int currentLocalPlayerCount { get; private set; }
 
             public readonly int maxLocalPlayers = 4;
 
@@ -1810,9 +1803,6 @@ namespace XSplitScreen
                 onConfigurationUpdated = new UnityEvent();
                 onSplitScreenEnabled = new UnityEvent();
                 onSplitScreenDisabled = new UnityEvent();
-                //onAssignmentLoaded = new AssignmentEvent();
-                //onAssignmentUnloaded = new AssignmentEvent();
-                //onAssignmentUpdate = new AssignmentEvent();
 
                 graphDimensions = new int2(3, 3);
 
@@ -1825,8 +1815,8 @@ namespace XSplitScreen
 
                 try
                 {
-                    preferencesConfig = configFile.Bind<string>("General", "Assignments", "", "Changes may break the mod!");
                     enabledConfig = configFile.Bind<bool>("General", "Enabled", false, "Should splitscreen automatically enable using last saved configuration if controllers are available?");
+                    preferencesConfig = configFile.Bind<string>("Preferences", "Assignments", "", "Changes may break the mod! Color values range from 0.0 to 1.0");
                 }
                 catch(Exception e)
                 {
@@ -1865,7 +1855,7 @@ namespace XSplitScreen
             }
             private void InitializeAssignments()
             {
-                Controller[] availableControllers = controllers.ToArray();//controllers.Where(c => autoKeyboardConfig.Value ? true : c.type != ControllerType.Keyboard).ToArray();
+                Controller[] availableControllers = controllers.ToArray();
 
                 if(preferences.Count == 0)
                 {
@@ -1965,6 +1955,9 @@ namespace XSplitScreen
             #region Controllers
             public Assignment? GetAssignment(Controller controller)
             {
+                if (controller is null)
+                    return null;
+
                 foreach(Assignment assignment in assignments)
                 {
                     if (assignment.HasController(controller))
@@ -2046,7 +2039,10 @@ namespace XSplitScreen
             }
             public void PushChanges(List<Assignment> changes)
             {
-                foreach(Assignment change in changes)
+                if (changes is null)
+                    return;
+
+                foreach (Assignment change in changes)
                 {
                     SetAssignment(change);
                 }
@@ -2089,6 +2085,12 @@ namespace XSplitScreen
             }
             private void LoadAssignment(int preferenceId, Controller controller)
             {
+                if (controller is null)
+                    return;
+
+                if (preferenceId < 0 && preferenceId >= preferences.Count)
+                    return;
+
                 Assignment newAssignment = new Assignment(controller);
 
                 newAssignment.Load(preferences[preferenceId]);
@@ -2097,7 +2099,7 @@ namespace XSplitScreen
             }
             private void UpdatePreferences()
             {
-                localPlayerCount = 0;
+                currentLocalPlayerCount = 0;
 
                 foreach(Assignment assignment in assignments)
                 {
@@ -2113,7 +2115,7 @@ namespace XSplitScreen
                     }
 
                     if(assignment.isAssigned)
-                        localPlayerCount++;
+                        currentLocalPlayerCount++;
                 }
 
                 onConfigurationUpdated.Invoke();
@@ -2163,8 +2165,8 @@ namespace XSplitScreen
 
                         if (instance.SetEnabled(status, out playerCount))
                         {
-                            localPlayerCount = playerCount;
-                            enabled = localPlayerCount > 1 ? true : false;
+                            currentLocalPlayerCount = playerCount;
+                            enabled = currentLocalPlayerCount > 1 ? true : false;
 
                             if (enabled)
                                 onSplitScreenEnabled.Invoke();
@@ -2180,7 +2182,7 @@ namespace XSplitScreen
                     int c;
 
                     instance.SetEnabled(false, out c);
-                    localPlayerCount = 1;
+                    currentLocalPlayerCount = 1;
                     enabled = false;
                     onSplitScreenDisabled.Invoke();
                 }
@@ -2202,11 +2204,6 @@ namespace XSplitScreen
             [System.Serializable]
             private class Wrapper
             {
-                //public bool[] isKeyboard;
-
-                //public string[] profile;
-
-                //public int[] deviceId;
                 public int[] positionX;
                 public int[] positionY;
                 public int[] displayId;
@@ -2219,9 +2216,6 @@ namespace XSplitScreen
 
                 public Wrapper(List<Preference> preferences)
                 {
-                    //isKeyboard = new bool[preferences.Count];
-                    //profile = new string[preferences.Count];
-                    //deviceId = new int[preferences.Count];
                     positionX = new int[preferences.Count];
                     positionY = new int[preferences.Count];
                     displayId = new int[preferences.Count];
@@ -2234,9 +2228,6 @@ namespace XSplitScreen
 
                     for (int e = 0; e < preferences.Count; e++)
                     {
-                        //isKeyboard[e] = preferences[e].isKeyboard;
-                        //profile[e] = preferences[e].profile;
-                        //deviceId[e] = preferences[e].deviceId;
                         positionX[e] = preferences[e].position.x;
                         positionY[e] = preferences[e].position.y;
                         displayId[e] = preferences[e].displayId;
@@ -2320,13 +2311,11 @@ namespace XSplitScreen
             public void Update(Assignment assignment)
             {
                 position = assignment.position;
-                //deviceId = assignment.deviceId;
                 displayId = assignment.displayId;
                 playerId = assignment.playerId;
                 profileId = assignment.profileId;
                 color = assignment.color;
-                //profile = assignment.profile;
-                //isKeyboard = assignment.isKeyboard;
+
                 Log.LogDebug($"Preference.Update: preference = {this}");
             }
         }
@@ -2337,8 +2326,6 @@ namespace XSplitScreen
             public Color color; // Group: Assignment
 
             public int2 position;  // Group: Screen
-
-            //public string profile;
 
             public int displayId;  // Group: Display
             public int playerId; // Group: Assignment
@@ -2402,7 +2389,7 @@ namespace XSplitScreen
                 if (this.controller is null)
                     return false;
 
-                return this.controller.Equals(controller); //this.controller.id == controller.id && this.controller.type == controller.type;
+                return this.controller.Equals(controller);
             }
             public void Load(Preference preference)
             {
@@ -2441,7 +2428,6 @@ namespace XSplitScreen
             {
                 position = int2.negative;
                 displayId = -1;
-                //context = int2.negative; // Last known change
             }
             public void ClearAll()
             {
@@ -2454,6 +2440,7 @@ namespace XSplitScreen
         }
         public struct Language
         {
+            // TODO prune
             public static readonly string MSG_DISCORD_LINK_HREF = "https://discord.gg/maHhJSv62G";
             public static readonly string MSG_DISCORD_LINK_STRING = "Discord";
             public static readonly string MSG_DISCORD_LINK_TOKEN = "XSPLITSCREEN_DISCORD";

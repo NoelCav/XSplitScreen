@@ -5,10 +5,8 @@ using System.Text;
 
 namespace XSplitScreen.Components
 {
+    // TODO migrate components here
     #region UI
-    public class XToggle : MPToggle
-    {
 
-    }
     #endregion
 }

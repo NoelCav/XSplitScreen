@@ -1,6 +1,6 @@
 # Description
 
-Easy drag & drop splitscreen assignments
+Splitscreen for Risk of Rain 2
 
 https://discord.gg/maHhJSv62G
 
@@ -16,23 +16,26 @@ https://discord.gg/maHhJSv62G
 
 ## Features
 
-- Supports 4 splitscreen players in singleplayer or multiplayer
-- Full UI with icon designs by Claymaver
-- Persistent assignments
+- Supports up to 4 players in singleplayer or multiplayer
+- Seamless UI assignments with icon designs by Claymaver
+- Persistent configuration remembers screen positions and profiles
 
 ## Planned
 
 - Multiple monitor support
-- Inverted gamepad controls
 - Custom colors
-- Splitscreen artifacts
+- Player handicaps
+- Artifacts
+- Items
 
-## Known Bugs
+## Known Issues
 
-- Profiles 'forget' the last used character
+- Profiles sometimes 'forget' the last used character
 - Profile dropdown can only be set using the mouse
 - Any user can change the loadout of the user who last refreshed the loadout panel
 - Some buttons can still become unbound when entering a run
+- Poor compatibility with other mods will be addressed in the future
+- When using the Command Cube sometimes the camera will show another player in the background
 
 ## Special thanks
 
@@ -61,19 +64,23 @@ Pub
 Bloodgem64
 kwiki
 
+- Special thanks to my son: the best splitscreen partner in the world!
+
 ## Changelog
 
 **2.0.0**
 
-- Added UI assignment screen
-- Changed player names to reflect local profile name
+- Added assignment screen
+- Added config entry for auto enable on startup
+- Changed player names to reflect local profile name in most cases
 - Changed player highlights to reflect preferred color
 - Changed cursor center to the center of assigned screen
-- Fixed gamepad cursors
+- Fixed most issues for gamepad cursors
 - Fixed character selection
 - Fixed artifact selection
-- Fixed most keybinds not being loaded
+- Fixed most keybinds not loading
 - Mod now uses BepInEx log and config file to store preferences
+- Changing bindings in the settings menu will save the bind to the player who last moved their cursor (sometimes breaks in runs)
 
 **1.2.1**
 

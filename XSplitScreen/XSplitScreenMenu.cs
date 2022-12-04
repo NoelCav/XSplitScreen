@@ -10,15 +10,13 @@ using UnityEngine.UI;
 
 namespace XSplitScreen
 {
-    // TODO
-    // Make SubMenuPanel display glyphs for last detected input
     class XSplitScreenMenu : BaseMainMenuScreen
     {
         #region Variables
         public static BaseMainMenuScreen instance { get; private set; }
 
-        public RectTransform buttonPanel; // add get set
-        public RectTransform assignmentWindow;
+        public RectTransform buttonPanel { get; private set; }
+        public RectTransform assignmentWindow { get; private set; }
         public UILayerKey layerKey { get; private set; }
 
         private bool convertButtons = true;
@@ -178,14 +176,11 @@ namespace XSplitScreen
 
                 XButtonConverter converter = button.gameObject.AddComponent<XButtonConverter>();
 
-                //converter.migrateOnClick = true;
-
                 converter.Initialize();
 
                 if (button.name.ToLower().Contains("return"))
                 {
                     converter.onClickMono.AddListener(OnClickRequestMenu);
-                    //gamepadInputEvent.actionEvent.AddListener(OnClickRequestMenu);
                 }
             }
 

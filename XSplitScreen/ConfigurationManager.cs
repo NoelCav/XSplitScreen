@@ -9,7 +9,6 @@ using UnityEngine;
 namespace XSplitScreen
 {
     // TODO
-    // create buttons to switch between different pages
     // state machine no longer needed due to defunct logic
     class ConfigurationManager : MonoBehaviour
     {
@@ -131,8 +130,6 @@ namespace XSplitScreen
 
                 assignmentManager = new GameObject("Assignment Manager", typeof(RectTransform), typeof(UnityEngine.UI.LayoutElement)).AddComponent<AssignmentManager>();
 
-                //var element = graphManager.GetComponent<UnityEngine.UI.LayoutElement>();
-
                 assignmentManager.transform.SetParent(page);
                 assignmentManager.transform.localScale = Vector3.one;
                 assignmentManager.transform.localPosition = Vector3.zero;
@@ -141,9 +138,6 @@ namespace XSplitScreen
 
                 Destroy(page.GetChild(5).gameObject);
                 Destroy(page.GetChild(6).GetChild(0).gameObject);
-
-                //GameObject leftArrowPrefab = .gameObject;
-                //GameObject rightArrowPrefab = GameObject.Find("Right Arrow");
 
                 displayControl = new GameObject("(Container) Display Control", typeof(RectTransform)).GetComponent<RectTransform>();
                 displayControl.SetParent(page.GetChild(6));
@@ -226,8 +220,7 @@ namespace XSplitScreen
                     Log.LogDebug($"Not activated");
                 }
 
-                // if SetEnabled is false then the configuration is invalid
-                // ping incomplete UI elements
+                // TODO ping invalid options if not activated
             }
             public void OnChangeDisplay(MonoBehaviour mono)
             {
@@ -246,9 +239,6 @@ namespace XSplitScreen
                 UpdateDisplayArrows();
 
                 assignmentManager.OnUpdateDisplay();
-                // -1 or 1 to cycle
-                // disable arrows
-                // send event to assignmentmanager
             }
             #endregion
 
@@ -281,6 +271,7 @@ namespace XSplitScreen
                 XButton rightButton = rightArrow.GetComponent<XButton>();
 
                 leftButton.interactable = true;
+                // TODO multi monitor
                 //rightButton.interactable = true;
 
                 if (currentDisplay == 0)
