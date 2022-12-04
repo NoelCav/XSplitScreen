@@ -93,6 +93,8 @@ namespace XSplitScreen
                         {
                             readyToCreateUI = false;
                             createUIFrameBuffer = 5;
+
+                            configuration.TryAutoEnable();
                         }
                     }
                 }
@@ -278,10 +280,6 @@ namespace XSplitScreen
                 On.RoR2.UI.MPInput.CenterCursor += MPInput_CenterCursor;
                 On.RoR2.UI.MPInput.Update += MPInput_Update;
 
-                //On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData; // Moved to conditional
-
-                //On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject += MPEventSystem_ValidateCurrentSelectedGameobject; // Moved to conditional
-
                 On.RoR2.UI.CharacterSelectController.Update += CharacterSelectController_Update;
 
                 On.RoR2.CharacterSelectBarController.PickIcon += CharacterSelectBarController_PickIcon;
@@ -315,10 +313,15 @@ namespace XSplitScreen
 
                 On.RoR2.UI.ProfileNameLabel.LateUpdate += ProfileNameLabel_LateUpdate;
 
-                //On.RoR2.SubjectChatMessage.ConstructChatString += SubjectChatMessage_ConstructChatString;
+                On.RoR2.SubjectChatMessage.GetSubjectName += SubjectChatMessage_GetSubjectName;
+
+                On.RoR2.Util.GetBestMasterName += Util_GetBestMasterName;
+
+                On.RoR2.UI.InputBindingControl.StartListening += InputBindingControl_StartListening;
+
+                On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
 
                 /* // Controller navigation requires layer keys
-                On.RoR2.SubjectChatMessage.GetSubjectName += SubjectChatMessage_GetSubjectName;
 
                 On.RoR2.UI.InputSourceFilter.Refresh += InputSourceFilter_Refresh;
 
@@ -342,9 +345,7 @@ namespace XSplitScreen
                 On.RoR2.UI.MPInput.CenterCursor -= MPInput_CenterCursor;
                 On.RoR2.UI.MPInput.Update -= MPInput_Update;
 
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData; // Moved to conditional
-
-                //On.RoR2.UI.MPEventSystem.ValidateCurrentSelectedGameobject -= MPEventSystem_ValidateCurrentSelectedGameobject; // Moved to conditional
+                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
 
                 On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
 
@@ -370,12 +371,6 @@ namespace XSplitScreen
 
                 On.RoR2.UI.Nameplate.LateUpdate -= Nameplate_LateUpdate;
 
-                //On.RoR2.SubjectChatMessage.ConstructChatString -= SubjectChatMessage_ConstructChatString;
-
-                On.RoR2.SubjectChatMessage.GetSubjectName -= SubjectChatMessage_GetSubjectName;
-
-                //On.RoR2.UI.InputSourceFilter.Refresh -= InputSourceFilter_Refresh; // LAST
-
                 On.RoR2.ColorCatalog.GetMultiplayerColor -= ColorCatalog_GetMultiplayerColor;
                 
                 On.RoR2.InputBindingDisplayController.Refresh -= InputBindingDisplayController_Refresh;
@@ -384,6 +379,14 @@ namespace XSplitScreen
 
                 On.RoR2.UI.ProfileNameLabel.LateUpdate += ProfileNameLabel_LateUpdate;
 
+                On.RoR2.SubjectChatMessage.GetSubjectName -= SubjectChatMessage_GetSubjectName;
+
+                On.RoR2.Util.GetBestMasterName -= Util_GetBestMasterName;
+
+                On.RoR2.UI.InputBindingControl.StartListening -= InputBindingControl_StartListening;
+
+                On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
+
                 /*
                 On.RoR2.UI.HGGamepadInputEvent.Update -= HGGamepadInputEvent_Update;
                 */
@@ -391,6 +394,10 @@ namespace XSplitScreen
                 //On.RoR2.UI.GameEndReportPanelController.SetPlayerInfo -= 
                 //On.RoR2.UI.UILayerKey.RefreshTopLayerForEventSystem -= UILayerKey_RefreshTopLayerForEventSystem;
             }
+
+            //InputMapperHelper_StartListening_IL(status);
+
+            //InputBindingControl_Update_IL(status);
 
             ToggleConditionalHooks();
         }
@@ -814,10 +821,11 @@ namespace XSplitScreen
             self.pickedIcon = newPickedIcon;
 
             CharacterSelectBarController.SurvivorPickInfoUnityEvent onSurvivorPicked = self.onSurvivorPicked;
+
             if (onSurvivorPicked == null)
                 return;
 
-            LocalUser user = input.currentButtonEventSystem?.localUser;
+            LocalUser user = input.currentMouseEventSystem?.localUser;
 
             if (user is null)
                 return;
@@ -1142,21 +1150,6 @@ namespace XSplitScreen
             foreach (SpriteRenderer coloredSprite in self.coloredSprites)
                 coloredSprite.color = color;
         }
-        private string SubjectChatMessage_ConstructChatString(On.RoR2.SubjectChatMessage.orig_ConstructChatString orig, RoR2.SubjectChatMessage self)
-        {
-            if (self.subjectAsNetworkUser)
-            {
-                if(self.subjectAsNetworkUser.localUser == null)
-                    return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.userName);
-                else
-                    return Util.EscapeRichTextForTextMeshPro(self.subjectAsNetworkUser.localUser.userProfile.name);
-            }
-
-            if (self.subjectAsCharacterBody)
-                return self.subjectAsCharacterBody.GetDisplayName();
-
-            return "???";
-        }
         private string SubjectChatMessage_GetSubjectName(On.RoR2.SubjectChatMessage.orig_GetSubjectName orig, SubjectChatMessage self)
         {
             if (self.subjectAsNetworkUser)
@@ -1283,6 +1276,141 @@ namespace XSplitScreen
             self.label.text = RoR2.Language.GetStringFormatted(self.token, self.currentUserName);
         }
         //private void GameEndReportPanelController_SetPlayerInfo(On.RoR2.UI.GameEndReportPanelController.) // End game player name
+        private string Util_GetBestMasterName(On.RoR2.Util.orig_GetBestMasterName orig, CharacterMaster characterMaster)
+        {
+            if (!characterMaster)
+                return "Null Master";
+
+            string userName = null;
+
+            if (characterMaster.playerCharacterMasterController?.networkUser)
+            {
+                if (characterMaster.playerCharacterMasterController.networkUser.isLocalPlayer)
+                    userName = characterMaster.playerCharacterMasterController?.networkUser.localUser.userProfile.name;
+                else
+                    userName = characterMaster.playerCharacterMasterController.networkUser.userName;
+            }
+
+            if(userName is null)
+            {
+                string baseNameToken = characterMaster.bodyPrefab?.GetComponent<CharacterBody>().baseNameToken;
+
+                if (baseNameToken != null)
+                    userName = RoR2.Language.GetString(baseNameToken);
+            }
+
+            return userName;
+        }
+        private void InputBindingControl_StartListening(On.RoR2.UI.InputBindingControl.orig_StartListening orig, InputBindingControl self)
+        {
+            if (!self.button.IsInteractable())
+                return;
+            self.inputMapperHelper.Stop();
+            self.currentPlayer = input.currentMouseEventSystem.player;
+            if (self.currentPlayer == null)
+                return;
+            IList<Controller> controllers = (IList<Controller>)null;
+            switch (self.inputSource)
+            {
+                case MPEventSystem.InputSource.MouseAndKeyboard:
+                    controllers = (IList<Controller>)new Controller[2]
+                    {
+            (Controller) self.currentPlayer.controllers.Keyboard,
+            (Controller) self.currentPlayer.controllers.Mouse
+                    };
+                    break;
+                case MPEventSystem.InputSource.Gamepad:
+                    controllers = (IList<Controller>)self.currentPlayer.controllers.Joysticks.ToArray<Joystick>();
+                    break;
+            }
+            self.inputMapperHelper.Start(self.currentPlayer, controllers, self.action, self.axisRange);
+            if (!(bool)(self.button))
+                return;
+            self.button.interactable = false;
+        }
+        private void ScoreboardController_Awake(On.RoR2.UI.ScoreboardController.orig_Awake orig, ScoreboardController self)
+        {
+            orig(self);
+            self.transform.GetComponentInChildren<PostProcessDuration>().gameObject.SetActive(false);
+        }
+
+        private void InputBindingControl_Update_IL(bool status)
+        {
+            if (status)
+            {
+                IL.RoR2.UI.InputBindingControl.StartListening += (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+                    Log.LogDebug($"Instruction: '{c}'");
+                    c.Next.Operand = input.currentMouseEventSystem;
+                };
+                Log.LogDebug($"Enabled hook");
+            }
+            else
+            {
+                IL.RoR2.UI.InputBindingControl.StopListening -= (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+                    c.Next.Operand = input.currentMouseEventSystem;
+                };
+                Log.LogDebug($"Disabled hook");
+            }
+        }
+        private void InputMapperHelper_StartListening_IL(bool status)
+        {
+            if (status)
+            {
+                IL.RoR2.UI.InputBindingControl.StartListening += (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+                    Log.LogDebug($"Start Instruction: '{c}'");
+                    c.Next.Operand = input.currentMouseEventSystem;
+                    Log.LogDebug($"Next operand = '{c.Next.Operand}'");
+                };
+            }
+            else
+            {
+                IL.RoR2.UI.InputBindingControl.StartListening -= (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+                    Log.LogDebug($"Stop Instruction: '{c}'");
+                    c.Next.Operand = input.currentMouseEventSystem;
+                };
+            }
+        }
+        //private void InputBindingControl_Update(On.RoR2.UI.InputBindingControl)
         #endregion
 
         #region Conditional Hooks
@@ -1643,8 +1771,6 @@ namespace XSplitScreen
 
             private ConfigEntry<string> preferencesConfig;
             private ConfigEntry<bool> enabledConfig;
-            private ConfigEntry<bool> autoKeyboardConfig;
-            private ConfigEntry<int> playerCountConfig;
             #endregion
 
             #region Unity Methods
@@ -1654,6 +1780,7 @@ namespace XSplitScreen
                 LoadConfigFile(configFile);
                 InitializeAssignments();
                 Save();
+
             }
             public void Destroy()
             {
@@ -1699,9 +1826,7 @@ namespace XSplitScreen
                 try
                 {
                     preferencesConfig = configFile.Bind<string>("General", "Assignments", "", "Changes may break the mod!");
-                    enabledConfig = configFile.Bind<bool>("General", "Enabled", false, "Should splitscreen automatically enable based on available controllers?");
-                    autoKeyboardConfig = configFile.Bind<bool>("General", "UseKeyboard", true, "Automatically enable splitscreen using the keyboard?");
-                    playerCountConfig = configFile.Bind<int>("General", "PlayerCount", 1, "Number of local players");
+                    enabledConfig = configFile.Bind<bool>("General", "Enabled", false, "Should splitscreen automatically enable using last saved configuration if controllers are available?");
                 }
                 catch(Exception e)
                 {
@@ -1719,7 +1844,6 @@ namespace XSplitScreen
                             preferences.Add(new Preference()
                             {
                                 position = new int2(wrapper.positionX[e], wrapper.positionY[e]),
-                                context = new int2(wrapper.contextX[e], wrapper.contextY[e]),
                                 displayId = wrapper.displayId[e],
                                 playerId = wrapper.playerId[e],
                                 profileId = wrapper.profileId[e],
@@ -1741,7 +1865,7 @@ namespace XSplitScreen
             }
             private void InitializeAssignments()
             {
-                Controller[] availableControllers = controllers.Where(c => autoKeyboardConfig.Value ? true : c.type != ControllerType.Keyboard).ToArray();
+                Controller[] availableControllers = controllers.ToArray();//controllers.Where(c => autoKeyboardConfig.Value ? true : c.type != ControllerType.Keyboard).ToArray();
 
                 if(preferences.Count == 0)
                 {
@@ -1754,7 +1878,6 @@ namespace XSplitScreen
                             preferences.Add(new Preference()
                             {
                                 position = int2.one,
-                                context = new int2(1, 0),
                                 displayId = 0,
                                 playerId = 0,
                                 profileId = 0,
@@ -1766,7 +1889,6 @@ namespace XSplitScreen
                             preferences.Add(new Preference()
                             {
                                 position = int2.negative,
-                                context = int2.negative,
                                 displayId = -1,
                                 playerId = e,
                                 profileId = -1,
@@ -1954,7 +2076,6 @@ namespace XSplitScreen
                 {
                     UpdatePreferences();
                     Wrapper wrapper = new Wrapper(preferences);
-                    enabledConfig.Value = enabled;
                     preferencesConfig.Value = JsonUtility.ToJson(wrapper);
                     config.Save();
                     return true;
@@ -2027,6 +2148,11 @@ namespace XSplitScreen
             #endregion
 
             #region Splitscreen
+            public void TryAutoEnable()
+            {
+                if (enabledConfig.Value)
+                    SetEnabled(true);
+            }
             public bool SetEnabled(bool status)
             {
                 if (status)
@@ -2083,8 +2209,6 @@ namespace XSplitScreen
                 //public int[] deviceId;
                 public int[] positionX;
                 public int[] positionY;
-                public int[] contextX;
-                public int[] contextY;
                 public int[] displayId;
                 public int[] playerId;
                 public int[] profileId;
@@ -2100,8 +2224,6 @@ namespace XSplitScreen
                     //deviceId = new int[preferences.Count];
                     positionX = new int[preferences.Count];
                     positionY = new int[preferences.Count];
-                    contextX = new int[preferences.Count];
-                    contextY = new int[preferences.Count];
                     displayId = new int[preferences.Count];
                     playerId = new int[preferences.Count];
                     profileId = new int[preferences.Count];
@@ -2117,8 +2239,6 @@ namespace XSplitScreen
                         //deviceId[e] = preferences[e].deviceId;
                         positionX[e] = preferences[e].position.x;
                         positionY[e] = preferences[e].position.y;
-                        contextX[e] = preferences[e].context.x;
-                        contextY[e] = preferences[e].context.y;
                         displayId[e] = preferences[e].displayId;
                         playerId[e] = preferences[e].playerId;
                         profileId[e] = preferences[e].profileId;
@@ -2174,7 +2294,6 @@ namespace XSplitScreen
             public Color color;
 
             public int2 position;
-            public int2 context;
 
             public int displayId;
             public int playerId;
@@ -2183,7 +2302,6 @@ namespace XSplitScreen
             public Preference(int playerId)
             {
                 position = int2.negative;
-                context = int2.negative;
                 displayId = -1;
                 profileId = -1;
                 this.playerId = playerId;
@@ -2191,9 +2309,9 @@ namespace XSplitScreen
             }
             public override string ToString()
             {
-                string newFormat = "Preference(position = '{0}', context = '{1}', displayId = '{2}', playerId = '{3}', profileId = '{4}', color = '{5}')";
+                string newFormat = "Preference(position = '{0}', displayId = '{1}', playerId = '{2}', profileId = '{3}', color = '{4}')";
 
-                return string.Format(newFormat, position, context, displayId, playerId, profileId, color);
+                return string.Format(newFormat, position, displayId, playerId, profileId, color);
             }
             public bool Matches(Preference preference)
             {
@@ -2202,7 +2320,6 @@ namespace XSplitScreen
             public void Update(Assignment assignment)
             {
                 position = assignment.position;
-                context = assignment.context;
                 //deviceId = assignment.deviceId;
                 displayId = assignment.displayId;
                 playerId = assignment.playerId;
@@ -2220,7 +2337,6 @@ namespace XSplitScreen
             public Color color; // Group: Assignment
 
             public int2 position;  // Group: Screen
-            public int2 context;  // Group: Assignment
 
             //public string profile;
 
@@ -2234,7 +2350,6 @@ namespace XSplitScreen
                 this.controller = controller;
 
                 position = int2.negative;
-                context = int2.negative;
                 displayId = -1;
                 playerId = -1;
                 profileId = -1;
@@ -2318,7 +2433,6 @@ namespace XSplitScreen
             public void ClearPlayer()
             {
                 this.controller = null;
-                context = int2.negative;
                 playerId = -1;
                 profileId = -1;
                 color = Color.white;

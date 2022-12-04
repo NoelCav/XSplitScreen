@@ -97,6 +97,7 @@ namespace XSplitScreen
                 page.gameObject.SetActive(true);
                 gameObject.GetComponentInParent<UnityEngine.UI.CanvasScaler>().HandleConstantPhysicalSize();
                 gameObject.GetComponentInParent<UnityEngine.UI.CanvasScaler>().HandleScaleWithScreenSize();
+                UpdateToggle(XSplitScreen.configuration.enabled);
             }
             public override State Tick()
             {
