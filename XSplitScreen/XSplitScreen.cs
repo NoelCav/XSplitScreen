@@ -26,6 +26,8 @@ using UnityEngine.EventSystems;
 using Rewired.Integration.UnityUI;
 using Rewired.UI;
 using System.Globalization;
+using Mono.Cecil.Cil;
+using UnityEngine.UI;
 
 namespace XSplitScreen
 {
@@ -265,6 +267,8 @@ namespace XSplitScreen
 
                 On.RoR2.RunCameraManager.Update += RunCameraManager_Update;
 
+                On.RoR2.CameraRigController.Start += CameraRigController_Start;
+
                 On.RoR2.LocalCameraEffect.OnUICameraPreCull += LocalCameraEffect_OnUICameraPreCull;
 
                 On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal;
@@ -288,7 +292,7 @@ namespace XSplitScreen
 
                 On.RoR2.Util.GetBestMasterName += Util_GetBestMasterName;
 
-                On.RoR2.UI.InputBindingControl.StartListening += InputBindingControl_StartListening;
+                On.RoR2.UI.InputBindingControl.StartListening += InputBindingControl_StartListening; // IL Test
 
                 On.RoR2.UI.ScoreboardController.Awake += ScoreboardController_Awake;
 
@@ -317,8 +321,6 @@ namespace XSplitScreen
                 On.RoR2.UI.MPInput.CenterCursor -= MPInput_CenterCursor;
                 On.RoR2.UI.MPInput.Update -= MPInput_Update;
 
-                On.RoR2.UI.MPInputModule.GetMousePointerEventData -= MPInputModule_GetMousePointerEventData;
-
                 On.RoR2.UI.CharacterSelectController.Update -= CharacterSelectController_Update;
 
                 On.RoR2.CharacterSelectBarController.PickIcon -= CharacterSelectBarController_PickIcon;
@@ -331,6 +333,8 @@ namespace XSplitScreen
                 On.RoR2.UI.LoadoutPanelController.UpdateDisplayData -= LoadoutPanelController_UpdateDisplayData;
 
                 On.RoR2.RunCameraManager.Update -= RunCameraManager_Update;
+
+                On.RoR2.CameraRigController.Start -= CameraRigController_Start;
 
                 On.RoR2.LocalCameraEffect.OnUICameraPreCull -= LocalCameraEffect_OnUICameraPreCull;
 
@@ -355,7 +359,7 @@ namespace XSplitScreen
 
                 On.RoR2.Util.GetBestMasterName -= Util_GetBestMasterName;
 
-                On.RoR2.UI.InputBindingControl.StartListening -= InputBindingControl_StartListening;
+                On.RoR2.UI.InputBindingControl.StartListening -= InputBindingControl_StartListening; // IL Test
 
                 On.RoR2.UI.ScoreboardController.Awake -= ScoreboardController_Awake;
 
@@ -380,7 +384,11 @@ namespace XSplitScreen
             bool status = false;
 
             if(configuration != null && XSplitScreenMenu.instance != null)
-                status = configuration.enabled || MainMenuController.instance.currentMenuScreen == XSplitScreenMenu.instance;
+                status = configuration.enabled || MainMenuController.instance.desiredMenuScreen == XSplitScreenMenu.instance;
+
+            if (configuration != null)
+                if (configuration.enabled && MainMenuController.instance.desiredMenuScreen != XSplitScreenMenu.instance)
+                    return;
 
             if (exit)
                 status = false;
@@ -616,6 +624,7 @@ namespace XSplitScreen
                         MPButton mpButton = raycast.gameObject.GetComponent<MPButton>();
                         HGButton hgButton = raycast.gameObject.transform?.parent.gameObject.GetComponent<HGButton>();
                         MPToggle mpToggle = raycast.gameObject.transform?.parent.gameObject.GetComponent<MPToggle>();
+                        Slider selectableSlider = raycast.gameObject.transform.parent?.parent?.GetComponentInChildren<Slider>();
 
                         if (input != null && priority < 3)
                         {
@@ -655,6 +664,18 @@ namespace XSplitScreen
                                     Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject.transform.parent.gameObject}' p1");
 
                                 focusObject = raycast.gameObject.transform.parent.gameObject;
+                                priority = 1;
+                            }
+                        }
+                        if (selectableSlider != null)
+                        {
+                            if (priority < 1)
+                            {
+                                if (logOutput)
+                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{selectableSlider}' p1");
+
+                                focusObject = selectableSlider.gameObject;
+
                                 priority = 1;
                             }
                         }
@@ -708,6 +729,7 @@ namespace XSplitScreen
                 self.GetPointerData(playerId, mouseIndex, index - 2147483520, out data4, true, PointerEventType.Mouse);
                 self.CopyFromTo(data1, data4);
                 data4.button = ~PointerEventData.InputButton.Left;
+
             }
 
             self.m_MouseState.SetButtonState(0, self.StateForMouseButton(playerId, mouseIndex, 0), data1);
@@ -720,7 +742,7 @@ namespace XSplitScreen
                 self.GetPointerData(playerId, mouseIndex, index - 2147483520, out data4, false, PointerEventType.Mouse);
                 self.m_MouseState.SetButtonState(index, self.StateForMouseButton(playerId, mouseIndex, index), data4);
             }
-            
+
             return self.m_MouseState;
         }
         private void SurvivorIconController_Update(On.RoR2.UI.SurvivorIconController.orig_Update orig, SurvivorIconController self)
@@ -911,6 +933,14 @@ namespace XSplitScreen
                     if (!cameraRigController)
                     {
                         cameraRigController = Instantiate<GameObject>(LegacyResourcesAPI.Load<GameObject>("Prefabs/Main Camera")).GetComponent<CameraRigController>();
+                        cameraRigController.viewport = configuration.GetScreenRectByLocalId(index2);
+
+                        if (Display.displays.Length > 1)
+                        {
+                            cameraRigController.sceneCam.targetDisplay = configuration.GetDisplayIdByLocalId(index2);
+                            cameraRigController.uiCam.targetDisplay = configuration.GetDisplayIdByLocalId(index2);
+                        }
+
                         self.cameras[index1] = cameraRigController;
                     }
 
@@ -959,7 +989,9 @@ namespace XSplitScreen
                 }
 
                 for (int index2 = 0; index2 < index3; ++index2)
-                    self.cameras[index2].viewport = configuration.GetScreenRect(index2);
+                {
+                    //self.cameras[index2].viewport = configuration.GetScreenRectByLocalId(index2);
+                }
             }
             else
             {
@@ -968,6 +1000,23 @@ namespace XSplitScreen
                     if (self.cameras[index])
                         Destroy(self.cameras[index].gameObject);
                 }
+            }
+        }
+        private void CameraRigController_Start(On.RoR2.CameraRigController.orig_Start orig, CameraRigController self)
+        {
+            orig(self);
+
+            Assignment[] assignments = configuration.assignments.Where(a => a.displayId != 0).ToArray();
+
+            foreach (Assignment assignment in assignments)
+            {
+                if (assignment.displayId <= 0 || assignment.displayId >= Display.displays.Length)
+                    continue;
+
+                Display currentDisplay = Display.displays[assignment.displayId];
+
+                if (!currentDisplay.active)
+                    currentDisplay.Activate();
             }
         }
         private void LocalCameraEffect_OnUICameraPreCull(On.RoR2.LocalCameraEffect.orig_OnUICameraPreCull orig, UICamera uiCamera)
@@ -1371,6 +1420,53 @@ namespace XSplitScreen
         }
         private void InputMapperHelper_StartListening_IL(bool status)
         {
+            // This doesn't work
+            if (status)
+            {
+                IL.RoR2.UI.InputBindingControl.StartListening += (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+
+                    c.Remove();
+                    c.Emit(OpCodes.Ldloc_1);
+                    c.EmitDelegate<Func<InputBindingControl, EventSystem>>((ib) =>
+                    {
+                        return input.currentMouseEventSystem;
+                    });
+                };
+            }
+            else
+            {
+                IL.RoR2.UI.InputBindingControl.StartListening -= (il) =>
+                {
+                    ILCursor c = new ILCursor(il);
+                    c.GotoNext(
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdarg(0),
+                            x => x.MatchLdfld<InputBindingControl>("eventSystemLocator"),
+                            x => x.MatchCallvirt<MPEventSystemLocator>("get_eventSystem"),
+                            x => x.MatchDup()
+                        );
+                    c.Index += 4;
+
+                    c.Remove();
+                    c.Emit(OpCodes.Ldloc_1);
+                    c.EmitDelegate<Func<InputBindingControl, EventSystem>>((ib) =>
+                    {
+                        return input.currentMouseEventSystem;
+                    });
+                };
+            }
+
+            return;
             if (status)
             {
                 IL.RoR2.UI.InputBindingControl.StartListening += (il) =>
@@ -1407,10 +1503,6 @@ namespace XSplitScreen
                 };
             }
         }
-        #endregion
-
-        #region Conditional Hooks
-
         #endregion
 
         #endregion
@@ -1509,7 +1601,10 @@ namespace XSplitScreen
             PlatformSystems.saveSystem.loadedUserProfiles.Values.CopyTo(profiles, 0);
 
             if (profiles.Length == 0)
+            {
+                Log.LogDebug($"XSplitScreen.SetEnabled: profiles.length is zero");
                 return false;
+            }
 
             if (!LogInUsers(profiles, status, out localPlayerCount))
                 return false;
@@ -1552,6 +1647,7 @@ namespace XSplitScreen
                         });
 
                         configuration.SetLocalId(assignment.playerId, localId - 1);
+                        Log.LogDebug($"XSplitScreen.LogInUsers: Logged in '{assignment}'");
                         localId++;
                     }
                 }
@@ -1565,7 +1661,10 @@ namespace XSplitScreen
                         continue;
 
                     if (string.Compare(localUsers[indexA].profile.fileName, localUsers[indexB].profile.fileName) == 0)
+                    {
+                        Log.LogDebug($"XSplitScreen.LogInUsers: Tried to assign profile '{localUsers[indexA].profile.name}' to multiple users");
                         return false;
+                    }
                 }
             }
 
@@ -1650,7 +1749,7 @@ namespace XSplitScreen
                 }
             }
 
-            PrintControllers();
+           // PrintControllers();
         }
         private void PrintControllers()
         {
@@ -1997,12 +2096,14 @@ namespace XSplitScreen
                     Assignment newAssignment = assignment.Value;
                     newAssignment.localId = localId;
 
-                    SetAssignment(newAssignment);
+                    //SetAssignment(newAssignment);
+                    assignments[newAssignment.playerId] = newAssignment;
+                    Log.LogDebug($"Configuration.SetLocalId: '{newAssignment}'");
                 }
             }
-            public Rect GetScreenRect(int playerId)
+            public Rect GetScreenRectByLocalId(int localId)
             {
-                Assignment? assignment = GetAssignmentByLocalId(playerId);
+                Assignment? assignment = GetAssignmentByLocalId(localId);
 
                 Rect screenRect = new Rect(0, 0, 1, 1);
 
@@ -2016,6 +2117,17 @@ namespace XSplitScreen
                 screenRect.height = assignment.Value.position.x == 1 ? 1 : 0.5f;
 
                 return screenRect;
+            }
+            public int GetDisplayIdByLocalId(int localId)
+            {
+                Assignment? assignment = GetAssignmentByLocalId(localId);
+
+                int displayId = 0;
+
+                if (!assignment.HasValue)
+                    return displayId;
+
+                return assignment.Value.displayId;
             }
             public Assignment? GetAssignmentByLocalId(int localId)
             {
@@ -2041,7 +2153,7 @@ namespace XSplitScreen
             {
                 if (changes is null)
                     return;
-
+                
                 foreach (Assignment change in changes)
                 {
                     SetAssignment(change);
@@ -2056,7 +2168,7 @@ namespace XSplitScreen
 
                 foreach (Assignment other in readonlyAssignments)
                 {
-                    if(other.position.Equals(assignment.position))
+                    if(other.position.Equals(assignment.position) && other.displayId == assignment.displayId)
                     {
                         Assignment unassigned = other;
                         unassigned.position = int2.negative;
@@ -2065,6 +2177,7 @@ namespace XSplitScreen
                 }
 
                 assignments[assignment.playerId] = assignment;
+                Log.LogDebug($"SetAssignment color '{assignment.color}'");
             }
             public bool Save()
             {
@@ -2085,16 +2198,14 @@ namespace XSplitScreen
             }
             private void LoadAssignment(int preferenceId, Controller controller)
             {
-                if (controller is null)
-                    return;
-
                 if (preferenceId < 0 && preferenceId >= preferences.Count)
                     return;
 
                 Assignment newAssignment = new Assignment(controller);
 
                 newAssignment.Load(preferences[preferenceId]);
-
+                // Controllers not being assigned correctly
+                // removeIcon not being toggled after disabling mod
                 assignments.Add(newAssignment);
             }
             private void UpdatePreferences()
@@ -2135,13 +2246,19 @@ namespace XSplitScreen
                                 continue;
 
                             if (other.position.Equals(assignment.position) && other.displayId == assignment.displayId)
+                            {
+                                Log.LogDebug($"XSplitScreen.VerifyConfiguration: Duplicate assignment found: '{other}'");
                                 return false;
+                            }
                         }
 
                         if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count
                             || assignment.controller == null || assignment.displayId < 0 ||
-                            assignment.displayId >= 1/*Display.displays.Length*/) // Disable multi monitor until ready
+                            assignment.displayId >= Display.displays.Length)
+                        {
+                            Log.LogDebug($"Configuration.VerifyConfiguration: Assignment invalid: '{assignment}'");
                             return false;
+                        }
                     }
                 }
 
@@ -2374,7 +2491,7 @@ namespace XSplitScreen
             }
             public override string ToString()
             {
-                return $"Assignment(position = '{position}', playerId = '{playerId}', profileId = '{playerId}', controller = '{controller != null}')";
+                return $"Assignment(position = '{position}', playerId = '{playerId}', profileId = '{profileId}', displayId = '{displayId}', localId = '{localId}', controller = '{(controller != null ? controller.name : "null")}')";
             }
             public bool Matches(Preference preference)
             {

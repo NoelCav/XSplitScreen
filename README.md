@@ -36,6 +36,7 @@ https://discord.gg/maHhJSv62G
 - Some buttons can still become unbound when entering a run
 - Poor compatibility with other mods will be addressed in the future
 - When using the Command Cube sometimes the camera will show another player in the background
+- Scoreboard UI does not work in multiplayer
 
 ## Special thanks
 
@@ -64,7 +65,7 @@ Pub
 Bloodgem64
 kwiki
 
-- Special thanks to my son: the best splitscreen partner in the world!
+- Extra special thanks to my son: the best splitscreen partner in the world
 
 ## Changelog
 

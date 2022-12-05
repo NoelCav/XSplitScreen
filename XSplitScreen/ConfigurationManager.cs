@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace XSplitScreen
 {
@@ -153,7 +154,7 @@ namespace XSplitScreen
                 leftArrow = Instantiate(leftArrowPrefab, displayControl.transform);
 
                 rightArrow.GetComponentInChildren<HGButton>().gameObject.AddComponent<XButtonConverter>();
-                rightArrow.transform.localPosition = new Vector3(100f, 0, 0);
+                rightArrow.transform.localPosition = new Vector3(100f, -2, 0);
 
                 XButtonConverter rightConverter = rightArrow.GetComponent<XButtonConverter>();
 
@@ -162,7 +163,7 @@ namespace XSplitScreen
                 rightConverter.interactable = Display.displays.Length > 1;
 
                 leftArrow.GetComponentInChildren<HGButton>().gameObject.AddComponent<XButtonConverter>();
-                leftArrow.transform.localPosition = new Vector3(-100f, 0, 0);
+                leftArrow.transform.localPosition = new Vector3(-100f, -2, 0);
 
                 XButtonConverter leftConverter = leftArrow.GetComponent<XButtonConverter>();
 
@@ -174,7 +175,13 @@ namespace XSplitScreen
                 GameObject controlText = Instantiate(controlTextPrefab, displayControl.transform);
                 controlText.transform.localPosition = new Vector3(0, 65f, 0);
 
+                Image controlImage = new GameObject("(Image) Monitor", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                controlImage.transform.SetParent(controlText.transform);
+                controlImage.transform.localPosition = new Vector3(0, -70f, 0);
+                controlImage.sprite = ControllerIconManager.instance.sprite_Monitor;
+
                 currentDisplayText = controlText.GetComponent<LanguageTextMeshController>();
+
                 UpdateDisplayText();
 
                 GameObject togglePrefab = MainMenuController.instance.multiplayerMenuScreen.GetComponentInChildren<MPToggle>(true).gameObject;
@@ -224,8 +231,6 @@ namespace XSplitScreen
             }
             public void OnChangeDisplay(MonoBehaviour mono)
             {
-                return;
-
                 int direction = mono.name.Contains("Right") ? 1 : -1;
 
                 int display = Mathf.Clamp(direction + currentDisplay, 0, Display.displays.Length - 1);
@@ -267,18 +272,18 @@ namespace XSplitScreen
             }
             private void UpdateDisplayArrows()
             {
+                Log.LogDebug($"UpdateDisplayArrows");
                 XButton leftButton = leftArrow.GetComponent<XButton>();
                 XButton rightButton = rightArrow.GetComponent<XButton>();
 
                 leftButton.interactable = true;
-                // TODO multi monitor
-                //rightButton.interactable = true;
+                rightButton.interactable = true;
 
                 if (currentDisplay == 0)
                 {
                     leftButton.interactable = false;
                 }
-                else if (currentDisplay >= Display.displays.Length - 1)
+                else if (currentDisplay >= Display.displays.Length - 1) // MULTI HACK
                 {
                     rightButton.interactable = false;
                 }

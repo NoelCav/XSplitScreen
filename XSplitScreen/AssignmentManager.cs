@@ -60,7 +60,6 @@ namespace XSplitScreen
             InitializeGraph();
             InitializeViewport();
             ToggleListeners(true);
-            //PrintGraph("Initialized");
         }
         private void InitializeReferences()
         {
@@ -80,12 +79,10 @@ namespace XSplitScreen
         private void InitializeViewport()
         {
             RectTransform rectTransform = GetComponent<RectTransform>();
-            //rectTransform.anchorMin = new Vector2(0f, 0.75f);
-            //rectTransform.anchorMax = new Vector2(0f, 0.5f);
+
             display.Initialize();
             display.GetComponent<LayoutElement>().preferredHeight = display.screenDimensions.y * configuration.graphDimensions.y + 50f;
             display.GetComponent<LayoutElement>().preferredWidth = display.screenDimensions.x * configuration.graphDimensions.x + 50f;
-            //onGraphUpdated.AddListener(display.OnGraphUpdated);
         }
         private void ToggleListeners(bool status)
         {
@@ -100,12 +97,6 @@ namespace XSplitScreen
             {
                 configuration.onControllerConnected -= OnControllerConnected;
             }
-            //ControllerIconManager.instance.onStartDragIcon.AddListener(OnStartDragIcon);
-            //ControllerIconManager.instance.onStopDragIcon.AddListener(OnStopDragIcon);
-            //ControllerIconManager.instance.onIconAdded.AddListener(OnIconAdded);
-            //ControllerIconManager.instance.onIconRemoved.AddListener(OnIconRemoved);
-
-            //configuration.onAssignmentLoaded.AddListener(OnAssignmentLoaded);
         }
         private void InitializeGraph()
         {
@@ -135,7 +126,7 @@ namespace XSplitScreen
 
             graph.SetNodeData(data);
 
-            LoadAssignments();
+            RefreshAssignmentsFromConfiguration();
 
             onGraphUpdated.Invoke();
         }
@@ -177,7 +168,7 @@ namespace XSplitScreen
         }
         public void OnBeginDragController()
         {
-            // show player pane slots
+
         }
         public void OnClickScreenAddPlayer(Screen screen)
         {
@@ -239,7 +230,7 @@ namespace XSplitScreen
             PushToBuffer(nodeData);
             PushToConfiguration();
         }
-        private void LoadAssignments()
+        public void RefreshAssignmentsFromConfiguration()
         {
             foreach(Assignment assignment in configuration.assignments)
             {
@@ -260,7 +251,9 @@ namespace XSplitScreen
 
             var newPlayerIndex = -1;
 
-            foreach(Assignment assignment in configuration.assignments)
+            Log.LogDebug($"AssignmentManager.AddPlayer: configuration.assignments.Count = '{configuration.assignments.Count}'");
+
+            foreach (Assignment assignment in configuration.assignments)
             {
                 if (!assignment.isAssigned)
                 {
@@ -310,9 +303,6 @@ namespace XSplitScreen
             ClearAssignment(destination);
 
             var node = graph.GetNode(destination);
-
-            // TODO
-            // Bug: Controller not auto assigning?
 
             if (node.nodeType == NodeType.Secondary)
                 ShiftLinear(destination, true);
@@ -375,10 +365,6 @@ namespace XSplitScreen
                         }
 
                 ShiftNeighbor(neighborOrigin, neighborDestination);
-                //ShiftNeighbor(node.neighborUpShift, node.neighborUp);
-                //ShiftNeighbor(node.neighborRightShift, node.neighborRight);
-                //ShiftNeighbor(node.neighborDownShift, node.neighborDown);
-                //ShiftNeighbor(node.neighborLeftShift, node.neighborLeft);
             }
         }
         private void ShiftLinear(int2 origin, bool reverse)
@@ -449,7 +435,6 @@ namespace XSplitScreen
                     {
                         int2 position = new int2(wX, wY);
 
-                        //ShiftNeighbor(position, position.Add(shiftDirection));
                         ShiftNeighbor(position, position.Add(shiftDirection));
                     }
                 }
@@ -462,7 +447,6 @@ namespace XSplitScreen
                     {
                         int2 position = new int2(hX, hY);
 
-                        //ShiftNeighbor(position, position.Add(shiftDirection));
                         ShiftNeighbor(position, position.Add(shiftDirection));
                     }
                 }
@@ -601,7 +585,7 @@ namespace XSplitScreen
             #region Variables
             public static ScreenDisplay instance { get; private set; }
 
-            public readonly int2 screenDimensions = new int2(129, 129);//135, 135);
+            public readonly int2 screenDimensions = new int2(129, 129);
             
             private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
 
@@ -664,7 +648,6 @@ namespace XSplitScreen
                 InitializeReferences();
                 InitializeUI();
                 ToggleListeners(true);
-                //Log.LogDebug($"AssignmentManager.ScreenDisplay: initialized");
             }
             private void InitializeReferences()
             {
@@ -705,7 +688,7 @@ namespace XSplitScreen
             {
                 monitor = new GameObject($"(Image) Monitor", typeof(RectTransform), typeof(Image), typeof(XButton)).GetComponent<Image>();
                 monitor.transform.SetParent(transform);
-                monitor.transform.localScale = Vector3.one;// new Vector3(1.25f, 1.25f, 1.25f);
+                monitor.transform.localScale = Vector3.one;
                 monitor.transform.localPosition = Vector3.zero;
                 monitor.sprite = sprite_display;
                 monitor.SetNativeSize();
@@ -726,7 +709,7 @@ namespace XSplitScreen
                 {
                     dividers[e] = new GameObject($"(Image) Divider {e}", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
                     dividers[e].transform.SetParent(transform);
-                    dividers[e].transform.localScale = Vector3.one;// new Vector3(1.25f, 1.25f, 1.25f);
+                    dividers[e].transform.localScale = Vector3.one;
                     dividers[e].transform.localPosition = Vector3.zero;
                     dividers[e].transform.localRotation = Quaternion.AngleAxis(e * -90f, new Vector3(0, 0, 1));
                     dividers[e].sprite = sprite_divider;
@@ -855,8 +838,6 @@ namespace XSplitScreen
                         int screenIndex = Utils.FlatIndexFrom2D(node.nodeData.data.position, configuration.graphDimensions.x, false);
 
                         Screen screen = screens[screenIndex];
-
-                        //screen.showButton = !node.nodeData.data.isAssigned;
 
                         switch(node.nodeType)
                         {
@@ -1006,8 +987,6 @@ namespace XSplitScreen
                 set
                 {
                     showPlayerPaneBool = value;
-
-                    //playerPaneBackground.raycastTarget = showPlayerPaneBool = value;
                 }
             }
             private bool showPlayerPaneBool = false;
@@ -1067,6 +1046,7 @@ namespace XSplitScreen
             private Image backgroundImage;
             private Image removeIcon;
             private Image settingsIcon;
+            private Image colorIndicatorImage;
 
             private Follower follower;
 
@@ -1075,6 +1055,8 @@ namespace XSplitScreen
             private Slider colorSlider;
 
             private Assignment assignment;
+
+            private Color requestedColor;
 
             private bool settingsOpen = false;
             #endregion
@@ -1095,6 +1077,11 @@ namespace XSplitScreen
                 {
                     backgroundImage.color = Color.Lerp(backgroundImage.color, disabledColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
                 }
+
+                if (settingsOpen)
+                {
+                    colorIndicatorImage.color = Color.Lerp(colorIndicatorImage.color, requestedColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
+                }
             }
             public void OnDestroy()
             {
@@ -1111,7 +1098,7 @@ namespace XSplitScreen
 
                 GameObject playerPaneBackgroundObject = new GameObject("(Image) Background", typeof(RectTransform), typeof(Image));
                 playerPaneBackgroundObject.transform.SetParent(transform);
-                playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.445f;//0.425f;
+                playerPaneBackgroundObject.transform.localScale = Vector3.one * 0.445f;
                 playerPaneBackgroundObject.transform.localPosition = Vector3.zero;
 
                 backgroundImage = playerPaneBackgroundObject.GetComponent<Image>();
@@ -1122,7 +1109,7 @@ namespace XSplitScreen
 
                 follower = gameObject.GetComponent<Follower>();
                 follower.smoothMovement = true;
-                follower.movementSpeed = .2f;//.45f;
+                follower.movementSpeed = .2f;
 
                 InitializePane();
             }
@@ -1135,7 +1122,6 @@ namespace XSplitScreen
                 GameObject prefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<MPDropdown>(true).gameObject;
 
                 profileDropdown = Instantiate(prefab, transform).GetComponent<MPDropdown>();
-                //profileDropdown.gameObject.GetComponent<ButtonSkinController>().skinData = GameObject.Find("NakedButton (Back)").GetComponent<ButtonSkinController>().skinData;
                 profileDropdown.name = "ProfileDropdown";
                 profileDropdown.transform.localPosition = new Vector3(101.5f, -75.1f);
                 profileDropdown.transform.localScale = Vector3.one * .79f;
@@ -1144,8 +1130,6 @@ namespace XSplitScreen
                 profileDropdown.GetComponent<Image>().SetNativeSize();
                 profileDropdown.template.gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.template.gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
-                //profileDropdown.template.gameObject.GetComponentInChildren<PanelSkinController>().skinData = GameObject.Find("NakedButton (Profile)").GetComponent<ButtonSkinController>().skinData;
-                //Log.LogDebug($"PlayerPane.InitializePane: button = '{GameObject.Find("NakedButton (Profile)")}'");
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().fontSize = 32;
                 profileDropdown.transform.GetChild(0).gameObject.GetComponentInChildren<HGTextMeshProUGUI>().overflowMode = TMPro.TextOverflowModes.Truncate;
 
@@ -1164,11 +1148,13 @@ namespace XSplitScreen
                 settingsIcon.sprite = ControllerIconManager.instance.sprite_Gear;
                 settingsIcon.SetNativeSize();
                 settingsIcon.GetComponent<XButton>().onClickMono.AddListener(OnToggleSettings);
+                settingsIcon.gameObject.SetActive(false);
 
                 GameObject sliderPrefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<SettingsSlider>(true).gameObject;
 
                 colorSlider = Instantiate(sliderPrefab.transform.GetChild(4).gameObject, transform).GetComponentInChildren<Slider>();
                 colorSlider.transform.localScale = Vector3.one;
+                colorSlider.transform.localPosition = new Vector3(25, 0, 0);
                 colorSlider.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 0);
                 colorSlider.name = "(Slider) Color";
 
@@ -1176,16 +1162,20 @@ namespace XSplitScreen
                 colorSlider.maxValue = colorMinMax.y;
                 colorSlider.onValueChanged.AddListener(OnSliderValueChange);
 
-                //Destroy(colorSlider.GetComponent<Image>());
-                //Destroy(colorSlider.GetComponent<ConsoleFunctions>());
-                //Destroy(colorSlider.GetComponent<LayoutElement>());
-                //Destroy(colorSlider.GetComponent<ButtonSkinController>());
-                //Destroy(colorSlider.GetComponent<HGButton>());
-                //Destroy(colorSlider.transform.GetChild(0).gameObject);
-                //Destroy(colorSlider.transform.GetChild(1).gameObject);
-                //Destroy(colorSlider.transform.GetChild(2).gameObject);
-                //Destroy(colorSlider.transform.GetChild(3).gameObject);
-                
+                GameObject colorIndicator = new GameObject("(Image) Color Indicator", typeof(RectTransform), typeof(Image));
+                colorIndicator.transform.SetParent(colorSlider.transform);
+                colorIndicator.transform.localScale = Vector3.one;
+                colorIndicator.transform.localPosition = new Vector3(-75, 35, 0);
+
+                colorIndicatorImage = colorIndicator.GetComponent<Image>();
+                colorIndicatorImage.sprite = ControllerIconManager.instance.sprite_Dot;
+                colorIndicatorImage.SetNativeSize();
+                colorIndicatorImage.raycastTarget = false;
+                colorIndicatorImage.color = Color.clear;
+
+                Destroy(colorSlider.transform.parent.GetComponent<LayoutElement>());
+                Destroy(colorSlider.transform.parent.GetChild(1).gameObject);
+                colorSlider.transform.parent.gameObject.SetActive(false);
             }
             #endregion
 
@@ -1196,7 +1186,7 @@ namespace XSplitScreen
             }
             public void LoadAssignment(Assignment assignment, Screen screen, bool resetPosition = false)
             {
-                if(false) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center!
+                if(false) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center
                 {
                     follower.target = transform.parent.GetComponent<RectTransform>();
                     follower.CatchUp();
@@ -1205,7 +1195,8 @@ namespace XSplitScreen
                 follower.target = screen.GetComponent<RectTransform>();
                 follower.enabled = true;
                 this.assignment = assignment;
-
+                requestedColor = assignment.color;
+                Log.LogDebug($"PlayerPane.LoadAssignment: assignment.color = '{assignment.color}'");
                 UpdateUI();
             }
             public void ClearAssignment()
@@ -1226,9 +1217,11 @@ namespace XSplitScreen
             #endregion
 
             #region Event Handlers
-            public void OnSliderValueChange(float value)
+            public void OnSliderValueChange(Single value)
             {
-
+                Vector3 hsv = Vector3.zero;
+                Color.RGBToHSV(assignment.color, out hsv.x, out hsv.y, out hsv.z);
+                requestedColor = Color.HSVToRGB(value, hsv.y, hsv.z);
             }
 
             public void OnToggleSettings(MonoBehaviour mono)
@@ -1236,6 +1229,17 @@ namespace XSplitScreen
                 settingsOpen = !settingsOpen;
 
                 SetSettingsOpen(settingsOpen);
+
+                if (!settingsOpen)
+                {
+                    Log.LogDebug($"PlayerPane.OnToggleSettings: assignment.color = '{assignment.color}'");
+                    Log.LogDebug($"PlayerPane.OnToggleSettings: requestedColor = '{requestedColor}'");
+                    assignment.color = requestedColor;
+
+                    configuration.PushChanges(new List<Assignment>() { assignment });
+                    AssignmentManager.instance.RefreshAssignmentsFromConfiguration();
+                    configuration.Save();
+                }
             }
             public void OnSplitScreenEnabled()
             {
@@ -1248,12 +1252,10 @@ namespace XSplitScreen
             public void OnProfileSelected(int profileId)
             {
                 instance.SetProfile(profileId - 1, assignment.position);
-                //MPEventSystem.current.SetSelectedGameObject(null);
             }
             public void OnRemovePlayer(MonoBehaviour mono)
             {
                 instance.OnClickScreenRemovePlayer(ScreenDisplay.instance.screens[Utils.FlatIndexFrom2D(assignment.position, configuration.graphDimensions.x, false)]);
-                //instance.RemovePlayer()
             }
             #endregion
 
@@ -1318,12 +1320,19 @@ namespace XSplitScreen
             }
             private void SetSettingsOpen(bool status)
             {
-                //Log.LogDebug($"PlayerPane.SetSettingsOpen: name = '{name}', status = '{status}'");
-
                 if (status)
                 {
                     settingsIcon.sprite = removeIcon.sprite;
-                    colorSlider.transform.parent.gameObject.SetActive(false);
+                    requestedColor = assignment.color;
+                    colorSlider.transform.parent.gameObject.SetActive(true);
+
+                    Vector3 currentColorHSV = Vector3.zero;
+
+                    Color.RGBToHSV(requestedColor, out currentColorHSV.x, out currentColorHSV.y, out currentColorHSV.z);
+
+                    colorSlider.SetValueWithoutNotify(currentColorHSV.x);
+
+                    Log.LogDebug($"Hue: '{currentColorHSV.x}'");
 
                     foreach (Icon icon in ControllerIconManager.instance.icons)
                     {
