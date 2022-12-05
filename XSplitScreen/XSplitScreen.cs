@@ -38,6 +38,9 @@ namespace XSplitScreen
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
     public class XSplitScreen : BaseUnityPlugin
     {
+        // TODO
+        // displayFollower not disabling interaction when mod is loaded and screen entered
+        // default cursor not disabling
         #region Variables
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "com.DoDad";
@@ -241,6 +244,7 @@ namespace XSplitScreen
 
             // TODO organize
 
+            Log.LogDebug($"ToggleSplitScreenHooks: status = '{status}'");
             if (status)
             {
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
@@ -393,6 +397,8 @@ namespace XSplitScreen
             if (exit)
                 status = false;
 
+            Log.LogDebug($"ToggleConditionalHooks: status = '{status}'");
+
             if (status)
             {
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
@@ -429,8 +435,7 @@ namespace XSplitScreen
         private void MPControlHelper_OnPointerClick(On.RoR2.UI.MPControlHelper.orig_OnPointerClick orig, ref MPControlHelper self, PointerEventData eventData, Action<PointerEventData> baseMethod)
         {
             // On click
-            Log.LogDebug($"MPControlHelper_OnPointerClick: '{eventData.currentInputModule.name}'");
-            input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
+            input?.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
 
             orig(ref self, eventData, baseMethod);
         }
@@ -447,7 +452,7 @@ namespace XSplitScreen
         }
         private void MPButton_Update(On.RoR2.UI.MPButton.orig_Update orig, RoR2.UI.MPButton self)
         {
-            // Remove the check for 'disableGamepadClick'
+            // Remove the check for 'disableGamepadClick' - is this necessary?
             // Remove fallback button setting
 
             if (!self.eventSystem || self.eventSystem.player == null)
@@ -463,7 +468,7 @@ namespace XSplitScreen
                 if (eventSystem.currentSelectedGameObject == self.gameObject &&
                     (eventSystem.player.GetButtonDown(4) || eventSystem.player.GetButtonDown(14)))
                 {
-                    input.UpdateCurrentEventSystem(eventSystem);
+                    input?.UpdateCurrentEventSystem(eventSystem);
                     self.InvokeClick();
                 }
             }
@@ -472,7 +477,8 @@ namespace XSplitScreen
         {
             // On click
 
-            input.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
+            input?.UpdateCurrentEventSystem(eventData.currentInputModule.eventSystem);
+
             orig(self, eventData);
         }
         private bool MPButton_InputModuleIsAllowed(On.RoR2.UI.MPButton.orig_InputModuleIsAllowed orig, RoR2.UI.MPButton self, BaseInputModule inputModule)
@@ -514,9 +520,15 @@ namespace XSplitScreen
 
                 self.internalMousePosition = center;
             }
+            else
+            {
+                Log.LogDebug($"MPInput_CenterCursor: '{self.playerId}' has no assignment");
+            }
         }
         private void MPInput_Update(On.RoR2.UI.MPInput.orig_Update orig, MPInput self)
         {
+            // Update current mouse event system
+
             if (!self.eventSystem.isCursorVisible)
                 return;
 
@@ -531,7 +543,7 @@ namespace XSplitScreen
                 {
                     if (Vector3.SqrMagnitude(UnityEngine.Input.mousePosition - (Vector3)self.internalMousePosition) > 0.1f)
                     {
-                        input.UpdateCurrentEventSystem(self.eventSystem, true);
+                        input?.UpdateCurrentEventSystem(self.eventSystem, true);
                     }
 
                     self.internalMousePosition = UnityEngine.Input.mousePosition;
@@ -558,7 +570,7 @@ namespace XSplitScreen
 
                 if (Vector3.SqrMagnitude(delta - (Vector3)self.internalMousePosition) > 0.1f)
                 {
-                    input.UpdateCurrentEventSystem(self.eventSystem, true);
+                    input?.UpdateCurrentEventSystem(self.eventSystem, true);
                 }
 
                 self.internalMousePosition = delta;
@@ -798,9 +810,9 @@ namespace XSplitScreen
         {
             // Update the local user to the player who last interacted with the UI
 
-            if (input.currentButtonEventSystem)
+            if (input?.currentButtonEventSystem)
                 self.localUser = input.currentMouseEventSystem.localUser;
-
+                
             orig(self);
         }
         private void CharacterSelectBarController_PickIcon(On.RoR2.CharacterSelectBarController.orig_PickIcon orig, CharacterSelectBarController self, RoR2.UI.SurvivorIconController newPickedIcon)
@@ -817,7 +829,7 @@ namespace XSplitScreen
             if (onSurvivorPicked == null)
                 return;
 
-            LocalUser user = input.currentMouseEventSystem?.localUser;
+            LocalUser user = input?.currentMouseEventSystem?.localUser;
 
             if (user is null)
                 return;
@@ -887,14 +899,15 @@ namespace XSplitScreen
         {
             // Use input.currentEventSystem
 
-            return input.currentButtonEventSystem?.localUser.currentNetworkUser;
+
+            return input?.currentButtonEventSystem?.localUser.currentNetworkUser;
         }
         private void LoadoutPanelController_UpdateDisplayData(On.RoR2.UI.LoadoutPanelController.orig_UpdateDisplayData orig, RoR2.UI.LoadoutPanelController self)
         {
             // Use input.currentEventSystem
 
-            UserProfile userProfile = input.currentMouseEventSystem?.localUser?.userProfile;
-            NetworkUser currentNetworkUser = input.currentMouseEventSystem?.localUser?.currentNetworkUser;
+            UserProfile userProfile = input?.currentMouseEventSystem?.localUser?.userProfile;
+            NetworkUser currentNetworkUser = input?.currentMouseEventSystem?.localUser?.currentNetworkUser;
 
             BodyIndex bodyIndex = (currentNetworkUser) ? currentNetworkUser.bodyIndexPreference : BodyIndex.None;
 
@@ -1006,6 +1019,9 @@ namespace XSplitScreen
         {
             orig(self);
 
+            if (configuration is null)
+                return;
+
             Assignment[] assignments = configuration.assignments.Where(a => a.displayId != 0).ToArray();
 
             foreach (Assignment assignment in assignments)
@@ -1023,6 +1039,9 @@ namespace XSplitScreen
         {
             // Disable death effect for players still alive
             // TODO this is broken
+
+
+
             for (int index = 0; index < LocalCameraEffect.instancesList.Count; index++)
             {
                 GameObject target = uiCamera?.cameraRigController?.target;
@@ -1188,6 +1207,13 @@ namespace XSplitScreen
         private void InputBindingDisplayController_Refresh(On.RoR2.InputBindingDisplayController.orig_Refresh orig, InputBindingDisplayController self, bool forceRefresh)
         {
             // TODO use IL hook
+
+            if (input is null)
+            {
+                orig(self, forceRefresh);
+                return;
+            }
+
             MPEventSystem eventSystem = input.currentMouseEventSystem;
 
             if (!eventSystem || Run.instance)
@@ -1269,7 +1295,8 @@ namespace XSplitScreen
         }
         private Color ColorCatalog_GetMultiplayerColor(On.RoR2.ColorCatalog.orig_GetMultiplayerColor orig, int playerSlot)
         {
-            //Log.LogDebug($"ColorCatalog_GetMultiplayerColor: Returning color for playerSlot ''");
+            if (configuration is null)
+                return orig(playerSlot);
 
             Assignment? assignment = configuration.GetAssignmentByLocalId(playerSlot);
 
@@ -1287,6 +1314,12 @@ namespace XSplitScreen
         }
         private void ProfileNameLabel_LateUpdate(On.RoR2.UI.ProfileNameLabel.orig_LateUpdate orig, ProfileNameLabel self)
         {
+            if (input is null)
+            {
+                orig(self);
+                return;
+            }
+
             string str = input.currentMouseEventSystem?.localUser?.userProfile.name ?? string.Empty;
 
             if (str == self.currentUserName)
@@ -1322,6 +1355,8 @@ namespace XSplitScreen
         }
         private void InputBindingControl_StartListening(On.RoR2.UI.InputBindingControl.orig_StartListening orig, InputBindingControl self)
         {
+            // TODO is this used?
+
             if (!self.button.IsInteractable())
                 return;
             self.inputMapperHelper.Stop();
@@ -1354,6 +1389,12 @@ namespace XSplitScreen
         }
         private void RuleCategoryController_SetRandomVotes(On.RoR2.UI.RuleCategoryController.orig_SetRandomVotes orig, RuleCategoryController self)
         {
+            if (input is null)
+            {
+                orig(self);
+                return;
+            }
+
             PreGameRuleVoteController forUser = PreGameRuleVoteController.FindForUser(input.currentMouseEventSystem?.localUser?.currentNetworkUser);
 
             if (!forUser)
@@ -1596,6 +1637,9 @@ namespace XSplitScreen
                 localPlayerCount = configuration.currentLocalPlayerCount;
             else
                 localPlayerCount = 0;
+
+            if (configuration is null)
+                status = false;
 
             UserProfile[] profiles = new UserProfile[PlatformSystems.saveSystem.loadedUserProfiles.Values.Count];
             PlatformSystems.saveSystem.loadedUserProfiles.Values.CopyTo(profiles, 0);

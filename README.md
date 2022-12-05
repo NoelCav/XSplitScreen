@@ -4,6 +4,8 @@ Splitscreen for Risk of Rain 2
 
 https://discord.gg/maHhJSv62G
 
+![UI](https://cdn.discordapp.com/attachments/995168655618871360/1049369226558853162/image.png)
+
 # Instructions
 
 1. Launch the game and click on 'Splitscreen' above 'Singleplayer' in the title menu
@@ -21,6 +23,7 @@ https://discord.gg/maHhJSv62G
 - Persistent configuration remembers screen positions and profiles
 - Multiple monitor support
 - Custom colors
+- Config option to auto enable if controllers are available
 
 ## Planned
 
@@ -30,13 +33,17 @@ https://discord.gg/maHhJSv62G
 
 ## Known Issues
 
+- If the configuration is invalid clicking Enable Mod does nothing
 - Profiles sometimes 'forget' the last used character
 - Any user can change the loadout of the user who last refreshed the loadout panel
+- Users can equip skills their profiles haven't unlocked
 - Some buttons can still become unbound when entering a run
-- Poor compatibility with other mods will be addressed in the future
+- Potential poor compatibility with other mods will be addressed in the future
 - When using the Command Cube / scrapping the camera will jump to another player
 - Scoreboard UI does not work in multiplayer
 - Some options in the assignment screen can only be interacted with using the mouse
+- Sometimes the default cursor visual remains enabled
+- Using multiple monitors may cause issues. Please join the Discord to report them
 
 ## Special thanks
 
@@ -63,7 +70,8 @@ Wumble,
 God of Heck,
 Pub,
 Bloodgem64,
-kwiki
+kwiki,
+Wiism
 
 - Extra special thanks to my son: the best splitscreen partner in the world
 

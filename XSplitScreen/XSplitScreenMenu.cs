@@ -90,7 +90,7 @@ namespace XSplitScreen
             worldPosition.SetParent(transform.parent);
 
             worldPosition.position = new Vector3(-10.8f, 601.2f, -424.2f);
-
+            // 80.87, 1.36, 368.40
             Quaternion forward = Quaternion.identity;
 
             forward = Quaternion.AngleAxis(20f, Vector3.up);

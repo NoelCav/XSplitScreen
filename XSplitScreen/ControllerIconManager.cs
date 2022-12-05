@@ -307,6 +307,11 @@ namespace XSplitScreen
             #endregion
 
             #region Unity Methods
+            public void Start()
+            {
+                if (configuration.enabled)
+                    OnSplitScreenEnabled();
+            }
             public void Update()
             {
                 if (controller is null)
@@ -451,29 +456,24 @@ namespace XSplitScreen
             {
                 hideDisplayImage = !status;
 
+                displayImage.raycastTarget = status && displayFollower.enabled;
+                displayButton.interactable = !configuration.enabled;
+                Log.LogDebug($"Icon.ToggleDisplayImage: displayButton.interactable = '{displayButton.interactable}'");
+                /*
                 if (hideDisplayImage)
                     displayImage.raycastTarget = false;
                 else
                 {
                     if (displayFollower.enabled)
                         displayImage.raycastTarget = true;
-                }
-            }
-            public void SetReassignmentStatus(bool status)
-            {
-                potentialReassignment = status;
-
-                displayImage.raycastTarget = !status;
-
-                if (!isAssigned)
-                    displayImage.raycastTarget = false;
+                }*/
             }
             public void UpdateDisplayFollower(RectTransform target)
             {
                 if (displayFollower is null)
                     return;
 
-                if(target == null)
+                if (target == null)
                 {
                     displayFollower.enabled = false;
                 }
@@ -484,7 +484,8 @@ namespace XSplitScreen
                 }
 
                 displayImage.raycastTarget = displayFollower.enabled;
-
+                displayButton.interactable = !configuration.enabled;
+                Log.LogDebug($"Icon.UpdateDisplayFollower: displayButton.interactable = '{displayButton.interactable}'");
                 UpdateStatus();
             }
             public void UpdateStatus()
@@ -511,14 +512,14 @@ namespace XSplitScreen
             public void OnSplitScreenEnabled()
             {
                 iconButton.interactable = false;
-                displayFollower.GetComponent<XButton>().interactable = false;
+                displayButton.interactable = false;
                 cursorFollower.gameObject.SetActive(false);
                 hasTemporaryAssignment = false;
             }
             public void OnSplitScreenDisabled()
             {
                 iconButton.interactable = true;
-                displayFollower.GetComponent<XButton>().interactable = true;
+                displayButton.interactable = true;
             }
             public void OnHoverStart(MonoBehaviour mono)
             {
@@ -534,7 +535,8 @@ namespace XSplitScreen
             }
             public void OnPointerDownIcon(MonoBehaviour mono)
             {
-                if (hasTemporaryAssignment)
+                // TODO displayButton.interactable is not properly enabling after returning from another scene while the mod is enabled
+                if (hasTemporaryAssignment || configuration.enabled)
                     return;
 
                 XButton button = mono as XButton;
