@@ -19,11 +19,11 @@ https://discord.gg/maHhJSv62G
 - Supports up to 4 players in singleplayer or multiplayer
 - Seamless UI assignments with icon designs by Claymaver
 - Persistent configuration remembers screen positions and profiles
+- Multiple monitor support
+- Custom colors
 
 ## Planned
 
-- Multiple monitor support
-- Custom colors
 - Player handicaps
 - Artifacts
 - Items
@@ -31,12 +31,12 @@ https://discord.gg/maHhJSv62G
 ## Known Issues
 
 - Profiles sometimes 'forget' the last used character
-- Profile dropdown can only be set using the mouse
 - Any user can change the loadout of the user who last refreshed the loadout panel
 - Some buttons can still become unbound when entering a run
 - Poor compatibility with other mods will be addressed in the future
-- When using the Command Cube sometimes the camera will show another player in the background
+- When using the Command Cube / scrapping the camera will jump to another player
 - Scoreboard UI does not work in multiplayer
+- Some options in the assignment screen can only be interacted with using the mouse
 
 ## Special thanks
 
@@ -44,25 +44,25 @@ https://discord.gg/maHhJSv62G
 - Claymaver for art assets (https://linktr.ee/claymaver)
 - All the testers, supporters, and those who reported bugs including:
 
-MemexJota
-PKPotential
-ThatBlueRacc
-Kaiben
-The_real_douchcanoe_
-KCaptainawesome
-O\_Linny_/O
-noahwubs
-Narl
-Hansei
-Aristhma
-Re-Class May
-AdaM
-Engi
-Coked Out Monkey
-Wumble
-God of Heck
-Pub
-Bloodgem64
+MemexJota,
+PKPotential,
+ThatBlueRacc,
+Kaiben,
+The_real_douchcanoe_,
+KCaptainawesome,
+O\_Linny_/O,
+noahwubs,
+Narl,
+Hansei,
+Aristhma,
+Re-Class May,
+AdaM,
+Engi,
+Coked Out Monkey,
+Wumble,
+God of Heck,
+Pub,
+Bloodgem64,
 kwiki
 
 - Extra special thanks to my son: the best splitscreen partner in the world
