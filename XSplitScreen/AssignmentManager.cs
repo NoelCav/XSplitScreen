@@ -172,7 +172,6 @@ namespace XSplitScreen
         }
         public void OnClickScreenAddPlayer(Screen screen)
         {
-            Log.LogDebug($"Adding player to '{screen.name}'");
             AddPlayer(screen);
         }
         public void OnClickScreenRemovePlayer(Screen screen)
@@ -251,8 +250,6 @@ namespace XSplitScreen
 
             var newPlayerIndex = -1;
 
-            Log.LogDebug($"AssignmentManager.AddPlayer: configuration.assignments.Count = '{configuration.assignments.Count}'");
-
             foreach (Assignment assignment in configuration.assignments)
             {
                 if (!assignment.isAssigned)
@@ -277,7 +274,6 @@ namespace XSplitScreen
         }
         private void RemovePlayer(Screen screen)
         {
-            Log.LogDebug($"AssignmentManager.RemovePlayer: configuration.localPlayerCount = '{configuration.currentLocalPlayerCount}'");
             if (configuration.assignedPlayerCount == 1)
                 return;
 
@@ -369,7 +365,6 @@ namespace XSplitScreen
         }
         private void ShiftLinear(int2 origin, bool reverse)
         {
-            Log.LogDebug($"AssignmentManager.ShiftLinear: origin = '{origin}'");
             Direction direction = Direction.None;
 
             var node = graph.GetNode(origin);
@@ -515,7 +510,7 @@ namespace XSplitScreen
 
             for(int e = 0; e < changeBuffer.Count; e++)
             {
-                if (changeBuffer[e].Matches(assignment))
+                if (changeBuffer[e].MatchesPlayer(assignment))
                 {
                     changeBuffer[e] = assignment;
                     updated = true;
@@ -544,7 +539,7 @@ namespace XSplitScreen
 
             string row = "";
 
-            Log.LogDebug($"{nodeHorizontalDivider}");
+            Log.LogOutput($"{nodeHorizontalDivider}");
 
             for(int x = 0; x < data.Length; x++)
             {
@@ -571,11 +566,11 @@ namespace XSplitScreen
                     row = $"{row}{((row.Length > 0) ? nodeVerticalDivider : "")}{line}";
                 }
 
-                Log.LogDebug(row);
+                Log.LogOutput(row);
                 row = "";
             }
 
-            Log.LogDebug($"{nodeHorizontalDivider}");
+            Log.LogOutput($"{nodeHorizontalDivider}");
         }
         #endregion
 
@@ -599,6 +594,7 @@ namespace XSplitScreen
             public Sprite sprite_plus { get; private set; }
 
             public Vector3[][] screenPositions { get; private set; }
+            public PlayerPane[] panes { get; private set; }
 
             private Texture2D texture_display;
             private Texture2D texture_display_center;
@@ -610,7 +606,6 @@ namespace XSplitScreen
             private Image center;
             private Image[] dividers;
 
-            private PlayerPane[] panes;
 
             private bool[] dividerEnabled = new bool[4];
             private bool centerEnabled;
@@ -822,8 +817,6 @@ namespace XSplitScreen
 
                 bool canAddPlayer = configuration.assignedPlayerCount < configuration.maxLocalPlayers;
 
-                Log.LogDebug($"ScreenDisplay.OnConfigurationUpdated: configuration.assignedPlayerCount = '{configuration.assignedPlayerCount}'");
-
                 for (x = 0; x < data.Length; x++)
                 {
                     for(y = 0; y < data[x].Length; y++)
@@ -903,6 +896,8 @@ namespace XSplitScreen
                             panes[node.nodeData.data.playerId].LoadAssignment(node.nodeData.data, screen, shouldCatchUpPanePosition[node.nodeData.data.playerId]);
                     }
                 }
+
+                InformStatus(VerifyStatus.Success);
             }
             public void OnClickScreenAddPlayer(MonoBehaviour mono)
             {
@@ -917,6 +912,45 @@ namespace XSplitScreen
             #endregion
 
             #region Display
+            public void InformStatus(XSplitScreen.VerifyStatus verifyStatus)
+            {
+                for (int x = 0; x < panes.Length; x++)
+                {
+                    if (!panes[x].isEnabled)
+                        continue;
+
+                    Assignment assignmentX = panes[x].GetAssignment();
+
+                    if (verifyStatus == VerifyStatus.InvalidController)
+                    {
+                        if (!assignmentX.HasController())
+                            panes[x].InformStatus(verifyStatus);
+                    }
+                    else if (verifyStatus == VerifyStatus.InvalidProfile)
+                    {
+                        if (assignmentX.profileId == -1 || assignmentX.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Count)
+                        {
+                            panes[x].InformStatus(verifyStatus);
+                        }
+                        else
+                        {
+                            for (int y = x + 1; y < panes.Length; y++)
+                            {
+                                if (!panes[y].isEnabled)
+                                    continue;
+
+                                Assignment assignmentY = panes[y].GetAssignment();
+
+                                if (assignmentX.profileId == assignmentY.profileId)
+                                {
+                                    panes[x].InformStatus(verifyStatus);
+                                    panes[y].InformStatus(verifyStatus);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             public void UpdateDisplayFollowers()
             {
                 foreach (Icon icon in ControllerIconManager.instance.icons)
@@ -1037,9 +1071,12 @@ namespace XSplitScreen
         public class PlayerPane : MonoBehaviour
         {
             #region Variables
-            private readonly Vector4 disabledColor = new Vector4(1, 1, 1, 0);
-            private readonly string colorFormatString = "0:0.00";
+            public bool isEnabled => paneFollower.enabled;
+            private readonly Vector3 warningScale = Vector3.one * 0.6f;
             private readonly Vector2 colorMinMax = new Vector2(0, 1);
+            private readonly string colorFormatString = "0:0.00";
+            private readonly float warningTimeout = 3f;
+            private readonly float warningFadeSpeed = 10f;
 
             private HGTextMeshProUGUI colorValueText;
 
@@ -1047,8 +1084,10 @@ namespace XSplitScreen
             private Image removeIcon;
             private Image settingsIcon;
             private Image colorIndicatorImage;
+            private Image warningImage;
 
-            private Follower follower;
+            private Follower paneFollower;
+            private Follower warningFollower;
 
             private MPDropdown profileDropdown;
 
@@ -1057,25 +1096,41 @@ namespace XSplitScreen
             private Assignment assignment;
 
             private Color requestedColor;
+            private Color warningColor = new Color(0.988f, 0.979f, 0.243f, 1);
 
             private bool settingsOpen = false;
+
+            private float warningTimer;
             #endregion
 
             #region Unity Methods
             public void Start()
             {
-                if (follower.enabled)
-                    follower.CatchUp();
+                if (paneFollower.enabled)
+                    paneFollower.CatchUp();
             }
             public void Update()
             {
-                if (follower.enabled)
+                if (paneFollower.enabled)
                 {
                     backgroundImage.color = Color.Lerp(backgroundImage.color, Color.white, Time.unscaledDeltaTime * Screen.fadeSpeed);
+
+                    if (warningTimer > 0)
+                    {
+                        warningImage.color = Color.Lerp(warningImage.color, warningColor, Time.unscaledDeltaTime * warningFadeSpeed);
+                        warningImage.transform.localScale = Vector3.Lerp(warningImage.transform.localScale, warningScale, Time.unscaledDeltaTime * warningFadeSpeed);
+                        warningTimer -= Time.unscaledDeltaTime;
+                    }
+                    else
+                    {
+                        warningImage.color = Color.Lerp(warningImage.color, Color.clear, Time.unscaledDeltaTime * warningFadeSpeed);
+                        warningImage.transform.localScale = Vector3.Lerp(warningImage.transform.localScale, warningScale * 0.8f, Time.unscaledDeltaTime * warningFadeSpeed);
+                    }
                 }
                 else
                 {
-                    backgroundImage.color = Color.Lerp(backgroundImage.color, disabledColor, Time.unscaledDeltaTime * Screen.fadeSpeed);
+                    backgroundImage.color = Color.Lerp(backgroundImage.color, Color.clear, Time.unscaledDeltaTime * Screen.fadeSpeed);
+                    warningImage.color = Color.Lerp(warningImage.color, Color.clear, Time.unscaledDeltaTime * Screen.fadeSpeed);
                 }
 
                 if (settingsOpen)
@@ -1105,20 +1160,16 @@ namespace XSplitScreen
                 backgroundImage.sprite = instance.display.sprite_display_screen;
                 backgroundImage.SetNativeSize();
                 backgroundImage.raycastTarget = false;
-                backgroundImage.color = disabledColor;
+                backgroundImage.color = Color.clear;
 
-                follower = gameObject.GetComponent<Follower>();
-                follower.smoothMovement = true;
-                follower.movementSpeed = .2f;
+                paneFollower = gameObject.GetComponent<Follower>();
+                paneFollower.smoothMovement = true;
+                paneFollower.movementSpeed = .2f;
 
                 InitializePane();
             }
             private void InitializePane()
             {
-                // TODO create slider for custom color
-                // fix player names
-                // ??
-
                 GameObject prefab = MainMenuController.instance.settingsMenuScreen.GetComponentInChildren<SubmenuMainMenuScreen>(true).submenuPanelPrefab.GetComponentInChildren<MPDropdown>(true).gameObject;
 
                 profileDropdown = Instantiate(prefab, transform).GetComponent<MPDropdown>();
@@ -1176,10 +1227,30 @@ namespace XSplitScreen
                 Destroy(colorSlider.transform.parent.GetComponent<LayoutElement>());
                 Destroy(colorSlider.transform.parent.GetChild(1).gameObject);
                 colorSlider.transform.parent.gameObject.SetActive(false);
+
+                GameObject warningObject = new GameObject("(Follower) Warning Icon", typeof(RectTransform), typeof(Image), typeof(Follower));
+                warningObject.transform.SetParent(transform);
+                warningObject.transform.localScale = warningScale;
+
+                warningFollower = warningObject.GetComponent<Follower>();
+                warningFollower.enabled = false;
+                warningFollower.smoothMovement = true;
+                warningFollower.movementSpeed = 0.1f;
+
+                warningImage = warningObject.GetComponent<Image>();
+                warningImage.sprite = ControllerIconManager.instance.sprite_Warning;
+                warningImage.color = Color.clear;
+                warningImage.raycastTarget = false;
+
+                assignment = new Assignment();
             }
             #endregion
 
             #region Assignment
+            public Assignment GetAssignment()
+            {
+                return assignment;
+            }
             public bool HasAssignment()
             {
                 return assignment.playerId > -1;
@@ -1188,31 +1259,33 @@ namespace XSplitScreen
             {
                 if(false) // TODO This isn't working properly. When a player is unassigned the pane needs to move back to the center
                 {
-                    follower.target = transform.parent.GetComponent<RectTransform>();
-                    follower.CatchUp();
+                    paneFollower.target = transform.parent.GetComponent<RectTransform>();
+                    paneFollower.CatchUp();
                 }
 
-                follower.target = screen.GetComponent<RectTransform>();
-                follower.enabled = true;
+                paneFollower.target = screen.GetComponent<RectTransform>();
+                paneFollower.enabled = true;
                 this.assignment = assignment;
                 requestedColor = assignment.color;
-                Log.LogDebug($"PlayerPane.LoadAssignment: assignment.color = '{assignment.color}'");
+
                 UpdateUI();
             }
             public void ClearAssignment()
             {
-                follower.enabled = false;
+                paneFollower.enabled = false;
                 UpdateUI();
             }
             private void UpdateUI()
             {
-                profileDropdown.gameObject.SetActive(follower.enabled);
-                removeIcon.gameObject.SetActive(follower.enabled);
-                settingsIcon.gameObject.SetActive(follower.enabled);
+                profileDropdown.gameObject.SetActive(paneFollower.enabled);
+                removeIcon.gameObject.SetActive(paneFollower.enabled);
+                settingsIcon.gameObject.SetActive(paneFollower.enabled);
 
-                SetSettingsOpen(false);
+                //SetSettingsOpen(false);
 
                 SetUILock(configuration.enabled);
+
+                InformStatus(VerifyStatus.Success);
             }
             #endregion
 
@@ -1232,8 +1305,6 @@ namespace XSplitScreen
 
                 if (!settingsOpen)
                 {
-                    Log.LogDebug($"PlayerPane.OnToggleSettings: assignment.color = '{assignment.color}'");
-                    Log.LogDebug($"PlayerPane.OnToggleSettings: requestedColor = '{requestedColor}'");
                     assignment.color = requestedColor;
 
                     configuration.PushChanges(new List<Assignment>() { assignment });
@@ -1260,6 +1331,24 @@ namespace XSplitScreen
             #endregion
 
             #region UI
+            public void InformStatus(XSplitScreen.VerifyStatus verifyStatus)
+            {
+                if (verifyStatus != VerifyStatus.Success)
+                {
+                    warningFollower.target = transform.GetComponent<RectTransform>();
+                    warningFollower.enabled = true;
+                    warningTimer = warningTimeout;
+                    warningImage.transform.localScale = Vector3.one;
+                }
+                else
+                {
+                    warningFollower.target = null;
+                    warningFollower.enabled = false;
+                    warningTimer = 0;
+                }
+
+                SetSettingsOpen(false);
+            }
             private void SetUILock(bool status)
             {
                 if (status)
@@ -1280,7 +1369,7 @@ namespace XSplitScreen
             }
             private void UpdateProfileDropdown()
             {
-                if (follower.enabled && !settingsOpen)
+                if (paneFollower.enabled && !settingsOpen)
                 {
                     profileDropdown.onValueChanged.RemoveAllListeners();
 
@@ -1331,8 +1420,6 @@ namespace XSplitScreen
                     Color.RGBToHSV(requestedColor, out currentColorHSV.x, out currentColorHSV.y, out currentColorHSV.z);
 
                     colorSlider.SetValueWithoutNotify(currentColorHSV.x);
-
-                    Log.LogDebug($"Hue: '{currentColorHSV.x}'");
 
                     foreach (Icon icon in ControllerIconManager.instance.icons)
                     {

@@ -33,6 +33,8 @@ namespace XSplitScreen
         public Sprite sprite_Gear { get; private set; }
         public Sprite sprite_Monitor { get; private set; }
         public Sprite sprite_Dot { get; private set; }
+        public Sprite sprite_Warning { get; private set; }
+        public Sprite sprite_Reset { get; private set; }
 
         public IconEvent onStartDragIcon { get; private set; }
         public IconEvent onStopDragIcon { get; private set; }
@@ -48,6 +50,8 @@ namespace XSplitScreen
         private Texture2D texture_Gear;
         private Texture2D texture_Monitor;
         private Texture2D texture_Dot;
+        private Texture2D texture_Warning;
+        private Texture2D texture_Reset;
 
         private RectTransform iconPrefab;
         private RectTransform iconContainer;
@@ -94,6 +98,8 @@ namespace XSplitScreen
             texture_Gear = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/gear.png");
             texture_Monitor = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/monitor.png");
             texture_Dot = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/dot.png");
+            texture_Warning = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/warning.png");
+            texture_Reset = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/reset.png");
 
             sprite_Dinput = Sprite.Create(texture_Dinput, new Rect(Vector2.zero, new Vector2(texture_Dinput.width, texture_Dinput.height)), Vector2.zero);
             sprite_Xinput = Sprite.Create(texture_Xinput, new Rect(Vector2.zero, new Vector2(texture_Xinput.width, texture_Xinput.height)), Vector2.zero);
@@ -104,6 +110,8 @@ namespace XSplitScreen
             sprite_Gear = Sprite.Create(texture_Gear, new Rect(Vector2.zero, new Vector2(texture_Gear.width, texture_Gear.height)), Vector2.zero);
             sprite_Monitor = Sprite.Create(texture_Monitor, new Rect(Vector2.zero, new Vector2(texture_Monitor.width, texture_Monitor.height)), Vector2.zero);
             sprite_Dot = Sprite.Create(texture_Dot, new Rect(Vector2.zero, new Vector2(texture_Dot.width, texture_Dot.height)), Vector2.zero);
+            sprite_Warning = Sprite.Create(texture_Warning, new Rect(Vector2.zero, new Vector2(texture_Warning.width, texture_Warning.height)), Vector2.zero);
+            sprite_Reset = Sprite.Create(texture_Reset, new Rect(Vector2.zero, new Vector2(texture_Reset.width, texture_Reset.height)), Vector2.zero);
 
             icons = new List<Icon>();
 
@@ -458,15 +466,6 @@ namespace XSplitScreen
 
                 displayImage.raycastTarget = status && displayFollower.enabled;
                 displayButton.interactable = !configuration.enabled;
-                Log.LogDebug($"Icon.ToggleDisplayImage: displayButton.interactable = '{displayButton.interactable}'");
-                /*
-                if (hideDisplayImage)
-                    displayImage.raycastTarget = false;
-                else
-                {
-                    if (displayFollower.enabled)
-                        displayImage.raycastTarget = true;
-                }*/
             }
             public void UpdateDisplayFollower(RectTransform target)
             {
@@ -485,7 +484,7 @@ namespace XSplitScreen
 
                 displayImage.raycastTarget = displayFollower.enabled;
                 displayButton.interactable = !configuration.enabled;
-                Log.LogDebug($"Icon.UpdateDisplayFollower: displayButton.interactable = '{displayButton.interactable}'");
+
                 UpdateStatus();
             }
             public void UpdateStatus()
@@ -563,7 +562,6 @@ namespace XSplitScreen
             }
             public void OnPointerUpCursor(MonoBehaviour mono)
             {
-                Log.LogDebug($"Icon.OnPointerUpCursor: mono.name = '{mono.name}'");
                 cursorFollower.gameObject.SetActive(false);
                 onStopDragIcon.Invoke(this);
                 hasTemporaryAssignment = false;

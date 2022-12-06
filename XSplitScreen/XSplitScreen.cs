@@ -39,19 +39,21 @@ namespace XSplitScreen
     public class XSplitScreen : BaseUnityPlugin
     {
         // TODO
-        // displayFollower not disabling interaction when mod is loaded and screen entered
         // default cursor not disabling
+
         #region Variables
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "com.DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "2.0.0";
+        public const string PluginVersion = "2.0.1";
 
         public static Configuration configuration { get; private set; }
         public static XSplitScreen instance { get; private set; }
         public static AssetBundle assets { get; private set; }
         public static Input input { get; private set; }
         public static GameObject buttonTemplate { get; private set; }
+
+        private static readonly Log.LogLevel logLevel = Log.LogLevel.All;
 
         private static readonly bool developerMode = false;
 
@@ -72,6 +74,8 @@ namespace XSplitScreen
         {
             if (instance)
                 Destroy(this);
+
+            Log.logLevel = logLevel;
 
             WaitForRewiredRoutine = StartCoroutine(WaitForRewired());
         }
@@ -136,15 +140,14 @@ namespace XSplitScreen
         {
             LanguageAPI.Add(Language.MSG_HOVER_TOKEN, Language.MSG_HOVER_STRING);
             LanguageAPI.Add(Language.MSG_TITLE_BUTTON_TOKEN, Language.MSG_TITLE_BUTTON_STRING);
-            LanguageAPI.Add(Language.MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN, Language.MSG_SPLITSCREEN_ENABLE_HOVER_STRING);
-            LanguageAPI.Add(Language.MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN, Language.MSG_SPLITSCREEN_DISABLE_HOVER_STRING);
             LanguageAPI.Add(Language.MSG_SPLITSCREEN_ENABLE_TOKEN, Language.MSG_SPLITSCREEN_ENABLE_STRING);
             LanguageAPI.Add(Language.MSG_SPLITSCREEN_DISABLE_TOKEN, Language.MSG_SPLITSCREEN_DISABLE_STRING);
             LanguageAPI.Add(Language.MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN, Language.MSG_SPLITSCREEN_CONFIG_HEADER_STRING);
-            LanguageAPI.Add(Language.MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN, Language.MSG_SPLITSCREEN_OPEN_DEBUG_STRING);
-            LanguageAPI.Add(Language.MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN, Language.MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING);
             LanguageAPI.Add(Language.MSG_DISCORD_LINK_TOKEN, Language.MSG_DISCORD_LINK_STRING);
             LanguageAPI.Add(Language.MSG_DISCORD_LINK_HOVER_TOKEN, Language.MSG_DISCORD_LINK_HOVER_STRING);
+            LanguageAPI.Add(Language.MSG_VERIFY_CONTROLLER_TOKEN, Language.MSG_VERIFY_CONTROLLER_STRING);
+            LanguageAPI.Add(Language.MSG_VERIFY_PROFILE_TOKEN, Language.MSG_VERIFY_PROFILE_STRING);
+            LanguageAPI.Add(Language.MSG_VERIFY_GENERIC_TOKEN, Language.MSG_VERIFY_GENERIC_STRING);
             LanguageAPI.Add(Language.MSG_UNSET_TOKEN, Language.MSG_UNSET_STRING);
         }
         private void InitializeReferences()
@@ -208,15 +211,12 @@ namespace XSplitScreen
         }
         private void ActiveSceneChanged(Scene previous, Scene current)
         {
-            Log.LogDebug($"XSplitScreen.ActiveSceneChanged");
-
             if (string.Compare(current.name, "title") == 0)
             {
                 if (WaitForMenuRoutine != null)
                     StopCoroutine(WaitForMenuRoutine);
 
                 WaitForMenuRoutine = StartCoroutine(WaitForMenu());
-                Log.LogDebug($"XSplitScreen.ActiveSceneChanged: Started coroutine");
             }
             else
             {
@@ -244,7 +244,6 @@ namespace XSplitScreen
 
             // TODO organize
 
-            Log.LogDebug($"ToggleSplitScreenHooks: status = '{status}'");
             if (status)
             {
                 On.RoR2.UI.CursorOpener.Awake += CursorOpener_Awake;
@@ -397,8 +396,6 @@ namespace XSplitScreen
             if (exit)
                 status = false;
 
-            Log.LogDebug($"ToggleConditionalHooks: status = '{status}'");
-
             if (status)
             {
                 On.RoR2.UI.MPInputModule.GetMousePointerEventData += MPInputModule_GetMousePointerEventData;
@@ -522,7 +519,7 @@ namespace XSplitScreen
             }
             else
             {
-                Log.LogDebug($"MPInput_CenterCursor: '{self.playerId}' has no assignment");
+                Log.LogOutput($"MPInput_CenterCursor: '{self.playerId}' has no assignment", Log.LogLevel.Warning);
             }
         }
         private void MPInput_Update(On.RoR2.UI.MPInput.orig_Update orig, MPInput self)
@@ -624,8 +621,6 @@ namespace XSplitScreen
             
             int priority = 0;
 
-            bool logOutput = false;
-
             foreach (RaycastResult raycast in self.m_RaycastResultCache)
             {
                 if (self.useCursor)
@@ -640,8 +635,6 @@ namespace XSplitScreen
 
                         if (input != null && priority < 3)
                         {
-                            if(logOutput)
-                                Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p3");
 
                             focusObject = raycast.gameObject;
                             priority = 3;
@@ -650,9 +643,6 @@ namespace XSplitScreen
                         {
                             if (priority < 2)
                             {
-                                if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject.transform.parent.gameObject}' p2");
-
                                 focusObject = raycast.gameObject.transform.parent.gameObject;
                                 priority = 2;
                             }
@@ -661,9 +651,6 @@ namespace XSplitScreen
                         {
                             if (priority < 1)
                             {
-                                if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject}' p1");
-
                                 focusObject = raycast.gameObject;
                                 priority = 1;
                             }
@@ -672,9 +659,6 @@ namespace XSplitScreen
                         {
                             if (priority < 1)
                             {
-                                if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{raycast.gameObject.transform.parent.gameObject}' p1");
-
                                 focusObject = raycast.gameObject.transform.parent.gameObject;
                                 priority = 1;
                             }
@@ -683,9 +667,6 @@ namespace XSplitScreen
                         {
                             if (priority < 1)
                             {
-                                if (logOutput)
-                                    Debug.Log($"MPInputModule_GetMousePointerEventData: '{playerId}' selecting '{selectableSlider}' p1");
-
                                 focusObject = selectableSlider.gameObject;
 
                                 priority = 1;
@@ -698,9 +679,6 @@ namespace XSplitScreen
             if (self.eventSystem.currentSelectedGameObject != null && focusObject == null)
                 if (self.eventSystem.currentSelectedGameObject.GetComponent<TMPro.TMP_InputField>() != null)
                     focusObject = self.eventSystem.currentSelectedGameObject;
-
-            //if (focusObject is null)
-            //    Log.LogDebug($"MPInputModule_GetMousePointerEventData: '{playerId}' focusObject is null");
 
             MPToggle toggle = focusObject?.GetComponent<MPToggle>();
 
@@ -1222,7 +1200,7 @@ namespace XSplitScreen
 
                 if (!eventSystem)
                 {
-                    Debug.LogError("MPEventSystem is invalid.");
+                    Log.LogOutput("InputBindingDisplayController_Refresh: MPEventSystem is invalid.", Log.LogLevel.Warning);
                     return;
                 }
             }
@@ -1436,10 +1414,10 @@ namespace XSplitScreen
                             x => x.MatchDup()
                         );
                     c.Index += 4;
-                    Log.LogDebug($"Instruction: '{c}'");
+                    Log.LogOutput($"Instruction: '{c}'");
                     c.Next.Operand = input.currentMouseEventSystem;
                 };
-                Log.LogDebug($"Enabled hook");
+                Log.LogOutput($"Enabled hook");
             }
             else
             {
@@ -1456,7 +1434,7 @@ namespace XSplitScreen
                     c.Index += 4;
                     c.Next.Operand = input.currentMouseEventSystem;
                 };
-                Log.LogDebug($"Disabled hook");
+                Log.LogOutput($"Disabled hook");
             }
         }
         private void InputMapperHelper_StartListening_IL(bool status)
@@ -1521,9 +1499,9 @@ namespace XSplitScreen
                             x => x.MatchDup()
                         );
                     c.Index += 4;
-                    Log.LogDebug($"Start Instruction: '{c}'");
+                    Log.LogOutput($"Start Instruction: '{c}'");
                     c.Next.Operand = input.currentMouseEventSystem;
-                    Log.LogDebug($"Next operand = '{c.Next.Operand}'");
+                    Log.LogOutput($"Next operand = '{c.Next.Operand}'");
                 };
             }
             else
@@ -1539,7 +1517,7 @@ namespace XSplitScreen
                             x => x.MatchDup()
                         );
                     c.Index += 4;
-                    Log.LogDebug($"Stop Instruction: '{c}'");
+                    Log.LogOutput($"Stop Instruction: '{c}'");
                     c.Next.Operand = input.currentMouseEventSystem;
                 };
             }
@@ -1553,7 +1531,7 @@ namespace XSplitScreen
         #region UI
         private bool CreateUI()
         {
-            Log.LogInfo($"XSplitScreen.CreateUI: Attempting to create UI");
+            Log.LogOutput($"XSplitScreen.CreateUI: Attempting to create UI", Log.LogLevel.Info);
 
             if (CreateMainMenuButton())
             {
@@ -1631,7 +1609,7 @@ namespace XSplitScreen
                 foreach (MPEventSystem instance in MPEventSystem.instancesList)
                     instance.SetSelectedGameObject(null);
         }
-        private bool SetEnabled(bool status, out int localPlayerCount)
+        private VerifyStatus SetEnabled(bool requestedStatus, out int localPlayerCount)
         {
             if (configuration != null)
                 localPlayerCount = configuration.currentLocalPlayerCount;
@@ -1639,33 +1617,35 @@ namespace XSplitScreen
                 localPlayerCount = 0;
 
             if (configuration is null)
-                status = false;
+                requestedStatus = false;
 
             UserProfile[] profiles = new UserProfile[PlatformSystems.saveSystem.loadedUserProfiles.Values.Count];
             PlatformSystems.saveSystem.loadedUserProfiles.Values.CopyTo(profiles, 0);
 
+            VerifyStatus verifyStatus = VerifyStatus.Fail;
+
             if (profiles.Length == 0)
             {
-                Log.LogDebug($"XSplitScreen.SetEnabled: profiles.length is zero");
-                return false;
+                Log.LogOutput($"XSplitScreen.SetEnabled: No profiles found. Unable to log in local users.", Log.LogLevel.Warning);
+                return verifyStatus;
             }
 
-            if (!LogInUsers(profiles, status, out localPlayerCount))
-                return false;
+            if (!LogInUsers(profiles, requestedStatus, out localPlayerCount, out verifyStatus))
+                return verifyStatus;
 
-            AssignControllers(status);
+            AssignControllers(requestedStatus);
 
-            ToggleSplitScreenHooks(status);
+            ToggleSplitScreenHooks(requestedStatus);
             
-            return true;
+            return verifyStatus;
         }
-        private bool LogInUsers(UserProfile[] profiles, bool status, out int localPlayerCount)
+        private bool LogInUsers(UserProfile[] profiles, bool requestedStatus, out int localPlayerCount, out VerifyStatus verifyStatus)
         {
             List<LocalUserManager.LocalUserInitializationInfo> localUsers = new List<LocalUserManager.LocalUserInitializationInfo>();
 
             localPlayerCount = 1;
 
-            if (!status)
+            if (!requestedStatus)
             {
                 localUsers.Add(new LocalUserManager.LocalUserInitializationInfo()
                 {
@@ -1691,7 +1671,7 @@ namespace XSplitScreen
                         });
 
                         configuration.SetLocalId(assignment.playerId, localId - 1);
-                        Log.LogDebug($"XSplitScreen.LogInUsers: Logged in '{assignment}'");
+                        Log.LogOutput($"LogInUsers: Logged in user for '{assignment}'");
                         localId++;
                     }
                 }
@@ -1706,7 +1686,8 @@ namespace XSplitScreen
 
                     if (string.Compare(localUsers[indexA].profile.fileName, localUsers[indexB].profile.fileName) == 0)
                     {
-                        Log.LogDebug($"XSplitScreen.LogInUsers: Tried to assign profile '{localUsers[indexA].profile.name}' to multiple users");
+                        Log.LogOutput($"LogInUsers: Unable to assign profile '{localUsers[indexA].profile.name}' to multiple local users", Log.LogLevel.Message);
+                        verifyStatus = VerifyStatus.InvalidProfile;
                         return false;
                     }
                 }
@@ -1723,15 +1704,19 @@ namespace XSplitScreen
                 On.RoR2.ViewablesCatalog.AddNodeToRoot -= ViewablesCatalog_AddNodeToRoot;
 
                 localPlayerCount = localUsers.Count;
-
+                verifyStatus = VerifyStatus.Success;
                 return true;
             }
             catch (Exception e)
             {
-                Log.LogWarning(e);
+                Log.LogOutput(e, Log.LogLevel.Error);
+
+                verifyStatus = VerifyStatus.Fail;
 
                 if(localUsers.Count > 1)
-                    LogInUsers(null, false, out localPlayerCount);
+                    LogInUsers(null, false, out localPlayerCount, out verifyStatus);
+
+                verifyStatus = VerifyStatus.Fail;
 
                 return false;
             }
@@ -1740,7 +1725,7 @@ namespace XSplitScreen
         {
             if (!status || configuration is null)
             {
-                Log.LogDebug($"XSplitScreen.AssignControllers: Auto Assigned");
+                Log.LogOutput($"AssignControllers: Auto assigned", Log.LogLevel.Info);
                 ReInput.controllers.AutoAssignJoysticks();
                 PrintControllers();
                 return;
@@ -1767,7 +1752,6 @@ namespace XSplitScreen
                     {
                         if (controller.type == ControllerType.Mouse)
                         {
-                            Log.LogDebug($"Assigning mouse");
                             LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.AddController(controller, false);
                             break;
                         }
@@ -1777,7 +1761,7 @@ namespace XSplitScreen
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].inputPlayer.controllers.AddController(assignment.controller, false);
                 LocalUserManager.readOnlyLocalUsersList[playerIndex].ApplyUserProfileBindingsToRewiredPlayer();
 
-                Log.LogDebug($"XSplitScreen.AssignControllers: Assigning '{assignment.controller.name}' to playerIndex '{playerIndex}'");
+                Log.LogOutput($"AssignControllers: Assigned controller '{assignment.controller.name}' to localId '{playerIndex}'");
             }
 
             if (!keyboardAssigned)
@@ -1786,7 +1770,7 @@ namespace XSplitScreen
                 {
                     if (controller.type == ControllerType.Mouse || controller.type == ControllerType.Keyboard)
                     {
-                        Log.LogDebug($"Keyboard not assigned - adding to first player");
+                        Log.LogOutput($"Keyboard not assigned - adding to first local player");
                         LocalUserManager.GetFirstLocalUser().inputPlayer.controllers.AddController(controller, false);
                         LocalUserManager.GetFirstLocalUser().ApplyUserProfileBindingsToRewiredPlayer();
                     }
@@ -1797,30 +1781,30 @@ namespace XSplitScreen
         }
         private void PrintControllers()
         {
-            Log.LogDebug($"XSplitScreen.PrintControllers: readOnlyLocalUsersList");
+            Log.LogOutput($"PrintControllers: readOnlyLocalUsersList");
             for (int e = 0; e < LocalUserManager.readOnlyLocalUsersList.Count; e++)
             {
                 foreach (Controller controller in LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.controllers.Controllers)
                 {
-                    Log.LogDebug($"XSplitScreen.PrintControllers: Player '{LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.name}' has controller '{controller}'");
+                    Log.LogOutput($"PrintControllers: Player '{LocalUserManager.readOnlyLocalUsersList[e].inputPlayer.name}' has controller '{controller}'");
                 }
             }
 
-            Log.LogDebug($"XSplitScreen.PrintControllers: ReInput players");
+            Log.LogOutput($"PrintControllers: ReInput players");
             foreach (Player player in ReInput.players.AllPlayers)
             {
                 
                 foreach (Controller controller in player.controllers.Controllers)
                 {
-                    Log.LogDebug($"XSplitScreen.PrintControllers: '{player.name}' <- '{controller.name}'");
+                    Log.LogOutput($"PrintControllers: '{player.name}' <- '{controller.name}'");
                 }
             }
 
-            Log.LogDebug($"XSplitScreen.PrintControllers: MPInputModules");
+            Log.LogOutput($"PrintControllers: MPInputModules");
 
             foreach (MPEventSystem eventSystem in MPEventSystem.readOnlyInstancesList)
             {
-                Log.LogDebug($"XSplitScreen.PrintControllers: '{eventSystem.name}' currentInputSource = '{eventSystem.currentInputSource}'");
+                Log.LogOutput($"PrintControllers: '{eventSystem.name}' currentInputSource = '{eventSystem.currentInputSource}'");
             }
             
         }
@@ -1852,7 +1836,7 @@ namespace XSplitScreen
             buttonTemplate = Instantiate(singleplayerButton);
             buttonTemplate.SetActive(false);
 
-            Log.LogDebug($"WaitForMenu done");
+            Log.LogOutput($"XSplitScreen.WaitForMenu: Ready to create UI");
             readyToCreateUI = true;
 
             yield return null;
@@ -1916,7 +1900,6 @@ namespace XSplitScreen
                 LoadConfigFile(configFile);
                 InitializeAssignments();
                 Save();
-
             }
             public void Destroy()
             {
@@ -1935,6 +1918,7 @@ namespace XSplitScreen
                 preferences.Clear();
                 assignments.Clear();
                 InitializeAssignments();
+                Log.LogOutput($"Configuration.ClearSave");
             }
             private void InitializeReferences()
             {
@@ -1963,7 +1947,7 @@ namespace XSplitScreen
                 }
                 catch(Exception e)
                 {
-                    Log.LogError(e);
+                    Log.LogOutput(e, Log.LogLevel.Error);
                 }
 
                 if(preferencesConfig.Value.Length > 0)
@@ -1984,16 +1968,16 @@ namespace XSplitScreen
                             });
                         }
 
-                        Log.LogInfo($"Loaded {wrapper.displayId.Length} preferences");
+                        Log.LogOutput($"Loaded '{wrapper.displayId.Length}' saved player preferences.", Log.LogLevel.Message);
                     }
                     catch(Exception e)
                     {
-                        Log.LogError(e);
+                        Log.LogOutput(e, Log.LogLevel.Error);
                     }
                 }
                 else
                 {
-                    Log.LogInfo($"No preferences found.");
+                    Log.LogOutput($"No player preferences found.", Log.LogLevel.Message);
                 }
             }
             private void InitializeAssignments()
@@ -2002,7 +1986,7 @@ namespace XSplitScreen
 
                 if(preferences.Count == 0)
                 {
-                    Log.LogDebug($"Creating preferences..");
+                    Log.LogOutput($"Creating default preferences.", Log.LogLevel.Message);
 
                     for(int e = 0; e < maxLocalPlayers; e++)
                     {
@@ -2034,14 +2018,9 @@ namespace XSplitScreen
                 for (int preferenceId = 0; preferenceId < preferences.Count; preferenceId++)
                 {
                     if(preferenceId < availableControllers.Length) // If controllers are available
-                    {
                         LoadAssignment(preferenceId, availableControllers[preferenceId]);
-                    }
                     else
-                    {
-                        Log.LogDebug($"Unable to find controller for preference id '{preferenceId}'");
                         LoadAssignment(preferenceId, null);
-                    }
                 }
             }
             private void ToggleListeners(bool status)
@@ -2142,7 +2121,6 @@ namespace XSplitScreen
 
                     //SetAssignment(newAssignment);
                     assignments[newAssignment.playerId] = newAssignment;
-                    Log.LogDebug($"Configuration.SetLocalId: '{newAssignment}'");
                 }
             }
             public Rect GetScreenRectByLocalId(int localId)
@@ -2221,7 +2199,6 @@ namespace XSplitScreen
                 }
 
                 assignments[assignment.playerId] = assignment;
-                Log.LogDebug($"SetAssignment color '{assignment.color}'");
             }
             public bool Save()
             {
@@ -2231,11 +2208,12 @@ namespace XSplitScreen
                     Wrapper wrapper = new Wrapper(preferences);
                     preferencesConfig.Value = JsonUtility.ToJson(wrapper);
                     config.Save();
+                    Log.LogOutput("Configuration.Save: Success.", Log.LogLevel.Message);
                     return true;
                 }
                 catch(Exception e)
                 {
-                    Log.LogError(e);
+                    Log.LogOutput(e, Log.LogLevel.Error);
                     return false;
                 }
 
@@ -2248,8 +2226,7 @@ namespace XSplitScreen
                 Assignment newAssignment = new Assignment(controller);
 
                 newAssignment.Load(preferences[preferenceId]);
-                // Controllers not being assigned correctly
-                // removeIcon not being toggled after disabling mod
+
                 assignments.Add(newAssignment);
             }
             private void UpdatePreferences()
@@ -2260,7 +2237,7 @@ namespace XSplitScreen
                 {
                     for(int e = 0; e < preferences.Count; e++)
                     {
-                        if(assignment.Matches(preferences[e]))
+                        if(assignment.MatchesPlayer(preferences[e]))
                         {
                             var preference = preferences[e];
                             preference.Update(assignment);
@@ -2275,38 +2252,47 @@ namespace XSplitScreen
 
                 onConfigurationUpdated.Invoke();
             }
-            private bool VerifyConfiguration()
+            private VerifyStatus VerifyConfiguration()
             {
                 if (PlatformSystems.saveSystem.loadedUserProfiles.Values.Count == 0 || assignedPlayerCount < 2)
-                    return false;
+                    return VerifyStatus.Fail;
 
                 foreach (Assignment assignment in configuration.assignments)
                 {
                     if (assignment.isAssigned)
                     {
+                        if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count)
+                            return VerifyStatus.InvalidProfile;
+
+                        if (assignment.controller is null)
+                            return VerifyStatus.InvalidController;
+
+                        if (assignment.displayId < 0 || assignment.displayId >= Display.displays.Length)
+                            return VerifyStatus.InvalidDisplay;
+
                         foreach (Assignment other in configuration.assignments)
                         {
-                            if (other.playerId == assignment.playerId)
+                            if (!other.isAssigned)
                                 continue;
 
-                            if (other.position.Equals(assignment.position) && other.displayId == assignment.displayId)
+                            if (other.playerId == assignment.playerId)
                             {
-                                Log.LogDebug($"XSplitScreen.VerifyConfiguration: Duplicate assignment found: '{other}'");
-                                return false;
+                                if (!other.MatchesAssignment(assignment))
+                                    return VerifyStatus.Fail;
+                                else
+                                    continue;
                             }
-                        }
 
-                        if (assignment.profileId == -1 || assignment.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Values.Count
-                            || assignment.controller == null || assignment.displayId < 0 ||
-                            assignment.displayId >= Display.displays.Length)
-                        {
-                            Log.LogDebug($"Configuration.VerifyConfiguration: Assignment invalid: '{assignment}'");
-                            return false;
+                            if (other.position.Equals(assignment.position) && other.displayId == assignment.displayId)
+                                return VerifyStatus.InvalidPosition;
+
+                            if (other.profileId == assignment.profileId)
+                                return VerifyStatus.InvalidProfile;
                         }
                     }
                 }
 
-                return true;
+                return VerifyStatus.Success;
             }
             #endregion
 
@@ -2316,15 +2302,21 @@ namespace XSplitScreen
                 if (enabledConfig.Value)
                     SetEnabled(true);
             }
-            public bool SetEnabled(bool status)
+            public VerifyStatus SetEnabled(bool requestedStatus)
             {
-                if (status)
+                VerifyStatus verifyStatus;
+
+                if (requestedStatus)
                 {
-                    if (VerifyConfiguration())
+                    verifyStatus = VerifyConfiguration();
+
+                    if (verifyStatus == VerifyStatus.Success)
                     {
                         int playerCount;
 
-                        if (instance.SetEnabled(status, out playerCount))
+                        verifyStatus = instance.SetEnabled(requestedStatus, out playerCount);
+
+                        if (verifyStatus == VerifyStatus.Success)
                         {
                             currentLocalPlayerCount = playerCount;
                             enabled = currentLocalPlayerCount > 1 ? true : false;
@@ -2334,7 +2326,16 @@ namespace XSplitScreen
                             else
                                 onSplitScreenDisabled.Invoke();
 
-                            return true;
+                            return VerifyStatus.Success;
+                        }
+                    }
+                    else
+                    {
+                        Log.LogOutput($"Configuration.SetEnabled: Failed to verify configuration with status '{verifyStatus}'");
+
+                        foreach (Assignment assignment in assignments)
+                        {
+                            Log.LogOutput($"Configuration.SetEnabled: '{assignment}'");
                         }
                     }
                 }
@@ -2342,13 +2343,13 @@ namespace XSplitScreen
                 {
                     int c;
 
-                    instance.SetEnabled(false, out c);
+                    verifyStatus = instance.SetEnabled(false, out c);
                     currentLocalPlayerCount = 1;
                     enabled = false;
                     onSplitScreenDisabled.Invoke();
                 }
 
-                return false;
+                return verifyStatus;
             }
             private void OnSplitScreenEnabled()
             {
@@ -2476,8 +2477,6 @@ namespace XSplitScreen
                 playerId = assignment.playerId;
                 profileId = assignment.profileId;
                 color = assignment.color;
-
-                Log.LogDebug($"Preference.Update: preference = {this}");
             }
         }
         public struct Assignment
@@ -2537,13 +2536,17 @@ namespace XSplitScreen
             {
                 return $"Assignment(position = '{position}', playerId = '{playerId}', profileId = '{profileId}', displayId = '{displayId}', localId = '{localId}', controller = '{(controller != null ? controller.name : "null")}')";
             }
-            public bool Matches(Preference preference)
+            public bool MatchesPlayer(Preference preference)
             {
                 return this.playerId == preference.playerId;
             }
-            public bool Matches(Assignment assignment)
+            public bool MatchesPlayer(Assignment assignment)
             {
                 return this.playerId == assignment.playerId;
+            }
+            public bool MatchesAssignment(Assignment assignment)
+            {
+                return this.playerId == assignment.playerId && this.deviceId == assignment.deviceId && this.controller.Equals(assignment.controller) && this.position.Equals(assignment.position);
             }
             public bool HasController(Controller controller)
             {
@@ -2551,6 +2554,13 @@ namespace XSplitScreen
                     return false;
 
                 return this.controller.Equals(controller);
+            }
+            public bool HasController()
+            {
+                if (this.controller is null)
+                    return false;
+
+                return true;
             }
             public void Load(Preference preference)
             {
@@ -2572,7 +2582,6 @@ namespace XSplitScreen
             {
                 position = screen.position;
                 displayId = ConfigurationManager.ControllerAssignmentState.currentDisplay;
-                Log.LogDebug($"Assignment.Load screen: '{this}'");
             }
             public void Load(Controller controller)
             {
@@ -2599,24 +2608,25 @@ namespace XSplitScreen
                 color = Color.white;
             }
         }
+        public enum VerifyStatus
+        {
+            Success,
+            InvalidProfile,
+            InvalidPosition,
+            InvalidDisplay,
+            InvalidController,
+            Fail,
+        }
         public struct Language
         {
-            // TODO prune
+            // TODO use language folder
             public static readonly string MSG_DISCORD_LINK_HREF = "https://discord.gg/maHhJSv62G";
             public static readonly string MSG_DISCORD_LINK_STRING = "Discord";
             public static readonly string MSG_DISCORD_LINK_TOKEN = "XSPLITSCREEN_DISCORD";
             public static readonly string MSG_DISCORD_LINK_HOVER_STRING = "Join the Discord for support";
             public static readonly string MSG_DISCORD_LINK_HOVER_TOKEN = "XSPLITSCREEN_DISCORD_HOVER";
-            public static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_TOKEN = "XSPLITSCREEN_DEBUG_FILE";
-            public static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_STRING = "Debug Folder";
-            public static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_TOKEN = "XSPLITSCREEN_DEBUG_FILE_HOVER";
-            public static readonly string MSG_SPLITSCREEN_OPEN_DEBUG_HOVER_STRING = "Open the folder containing the XSplitScreen log";
             public static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_TOKEN = "XSPLITSCREEN_CONFIG_HEADER";
             public static readonly string MSG_SPLITSCREEN_CONFIG_HEADER_STRING = "Assignment";
-            public static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_TOKEN = "XSPLITSCREEN_ENABLE_HOVER";
-            public static readonly string MSG_SPLITSCREEN_ENABLE_HOVER_STRING = "Turn on XSplitScreen";
-            public static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_TOKEN = "XSPLITSCREEN_DISABLE_HOVER";
-            public static readonly string MSG_SPLITSCREEN_DISABLE_HOVER_STRING = "Turn off XSplitScreen";
             public static readonly string MSG_SPLITSCREEN_ENABLE_TOKEN = "XSPLITSCREEN_ENABLE";
             public static readonly string MSG_SPLITSCREEN_ENABLE_STRING = "Enable";
             public static readonly string MSG_SPLITSCREEN_DISABLE_TOKEN = "XSPLITSCREEN_DISABLE";
@@ -2625,24 +2635,15 @@ namespace XSplitScreen
             public static readonly string MSG_TITLE_BUTTON_STRING = "Splitscreen";
             public static readonly string MSG_HOVER_TOKEN = "TITLE_XSPLITSCREEN_DESC";
             public static readonly string MSG_HOVER_STRING = "Modify splitscreen settings.";
-            public static readonly string MSG_UNSET_STRING = "Unset";
             public static readonly string MSG_UNSET_TOKEN = "XSPLITSCREEN_UNSET";
+            public static readonly string MSG_UNSET_STRING = "(not set)";
 
-            public static readonly string MSG_TAG_PLUGIN = "[XSS] {0}";
-            public static readonly string MSG_ERROR_SINGLE_LOCAL_PLAYER = "There is only 1 local player signed in.";
-            public static readonly string MSG_ERROR_GENERIC = "[{0}] Unable to continue.";
-            public static readonly string MSG_ERROR_SIGN_IN_FIRST = "Please sign in to a user profile before configuring XSplitScreen.";
-            public static readonly string MSG_ERROR_PLAYER_COUNT = "Unable to set player count to requested number. Disabling splitscreen.";
-            public static readonly string MSG_ERROR_NETWORK_ACTIVE = "XSplitScreen must be configured in the main menu.";
-            public static readonly string MSG_ERROR_NO_PROFILES = "No profiles detected. Please create a profile before configuring XSplitScreen.";
-            public static readonly string MSG_ERROR_INVALID_ARGS = "Invalid arguments. Please type help to see a list of console commands and how to use them.";
-            public static readonly string MSG_ERROR_INVALID_PLAYER_RANGE = "A given player index is invalid. Make sure all players are logged in with 'xsplitset'.";
-            public static readonly string MSG_INFO_KEYBOARD_ONLY = "Not enough controllers. Only keyboard mode is available.";
-            public static readonly string MSG_INFO_PLAYER_COUNT_CLAMPED = "Requested invalid number of players ({0}). Trying '{1}'.";
-            public static readonly string MSG_INFO_ENTER = "XSplitScreen loaded. Type help to see how to use the 'xsplitset' command.";
-            public static readonly string MSG_INFO_EXIT = "Attempting to exit: your controllers may or may not work until you restart the game.";
-            public static readonly string MSG_INFO_KEYBOARD_STATUS = "Keyboard mode requested";
-            public static readonly string MSG_INFO_POTENTIAL_PLAYERS = "{0} potential users detected";
+            public static readonly string MSG_VERIFY_PROFILE_TOKEN = "XSPLITSCREEN_VERIFY_PROFILE";
+            public static readonly string MSG_VERIFY_PROFILE_STRING = "Invalid profile assignments";
+            public static readonly string MSG_VERIFY_GENERIC_TOKEN = "XSPLITSCREEN_VERIFY_GENERIC";
+            public static readonly string MSG_VERIFY_GENERIC_STRING = "Invalid assignments";
+            public static readonly string MSG_VERIFY_CONTROLLER_TOKEN = "XSPLITSCREEN_CONTROLLER_PROFILE";
+            public static readonly string MSG_VERIFY_CONTROLLER_STRING = "Invalid controller assignments";
         }
         #endregion
     }

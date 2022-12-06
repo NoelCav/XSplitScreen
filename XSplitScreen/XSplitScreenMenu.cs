@@ -69,7 +69,6 @@ namespace XSplitScreen
             {
                 opener.forceCursorForGamePad = false;
             }
-            Log.LogDebug($"XSplitScreenMenu.OnDisable: forceCursor set to false");
         }
         #endregion
 

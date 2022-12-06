@@ -214,17 +214,20 @@ namespace XSplitScreen
             #region Event Listeners
             public void OnToggleEnableMod(bool status)
             {
-                bool success = XSplitScreen.configuration.SetEnabled(status);
+                XSplitScreen.VerifyStatus verifyStatus = XSplitScreen.configuration.SetEnabled(status);
 
-                UpdateToggle(XSplitScreen.configuration.enabled);
+                UpdateToggle(XSplitScreen.configuration.enabled, verifyStatus);
 
-                if (success)
+                if (verifyStatus == XSplitScreen.VerifyStatus.Success)
                 {
-                    Log.LogDebug($"Activated");
+                    if(status)
+                        Log.LogOutput($"Splitscreen enabled.", Log.LogLevel.Message);
+                    else
+                        Log.LogOutput($"Splitscreen disabled.", Log.LogLevel.Message);
                 }
                 else
                 {
-                    Log.LogDebug($"Not activated");
+                    Log.LogOutput($"Failed to toggle splitscreen with status '{verifyStatus}'", Log.LogLevel.Message);
                 }
 
                 // TODO ping invalid options if not activated
@@ -248,7 +251,7 @@ namespace XSplitScreen
             #endregion
 
             #region UI
-            private void UpdateToggle(bool status)
+            private void UpdateToggle(bool status, XSplitScreen.VerifyStatus verifyStatus = XSplitScreen.VerifyStatus.Success)
             {
                 toggleEnableMod.transform.GetChild(0).GetComponent<MPToggle>().onValueChanged.RemoveAllListeners();
                 toggleEnableMod.transform.GetChild(0).GetComponent<MPToggle>().isOn = status;
@@ -265,6 +268,19 @@ namespace XSplitScreen
                     controllerEnableMod.token = XSplitScreen.Language.MSG_SPLITSCREEN_ENABLE_TOKEN;
                 }
 
+                if (verifyStatus != XSplitScreen.VerifyStatus.Success)
+                {
+                    if (verifyStatus == XSplitScreen.VerifyStatus.Fail || verifyStatus == XSplitScreen.VerifyStatus.InvalidPosition)
+                    {
+                        controllerEnableMod.token = XSplitScreen.Language.MSG_VERIFY_GENERIC_TOKEN;
+                    }
+                    else if(verifyStatus == XSplitScreen.VerifyStatus.InvalidController)
+                        controllerEnableMod.token = XSplitScreen.Language.MSG_VERIFY_CONTROLLER_TOKEN;
+                    else if(verifyStatus == XSplitScreen.VerifyStatus.InvalidProfile)
+                        controllerEnableMod.token = XSplitScreen.Language.MSG_VERIFY_PROFILE_TOKEN;
+
+                    AssignmentManager.ScreenDisplay.instance.InformStatus(verifyStatus);
+                }
             }
             private void UpdateDisplayText()
             {
