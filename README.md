@@ -77,6 +77,15 @@ Wiism
 
 ## Changelog
 
+**2.0.2**
+
+- Added fancy color cycle for warning triangle
+
+**2.0.1**
+
+- Added assignment notifications for invalid options
+- Added log levels
+
 **2.0.0**
 
 - Added assignment screen

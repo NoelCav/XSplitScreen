@@ -55,7 +55,7 @@ namespace XSplitScreen
 
         private static readonly Log.LogLevel logLevel = Log.LogLevel.All;
 
-        private static readonly bool developerMode = false;
+        private static readonly bool developerMode = true;
 
         private static Coroutine WaitForMenuRoutine;
         private static Coroutine WaitForRewiredRoutine;
@@ -89,6 +89,7 @@ namespace XSplitScreen
         }
         public void LateUpdate()
         {
+            
             if (readyToCreateUI)
             {
                 if (MainMenuController.instance.currentMenuScreen.Equals(MainMenuController.instance.titleMenuScreen))

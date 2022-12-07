@@ -14,10 +14,12 @@
 
   <ItemGroup>
     <None Remove="xsplitscreenbundle" />
+    <None Remove="xsplitscreenbundle.manifest" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="xsplitscreenbundle" />
+    <EmbeddedResource Include="xsplitscreenbundle.manifest" />
   </ItemGroup>
 
   <ItemGroup>

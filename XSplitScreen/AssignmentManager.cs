@@ -1077,7 +1077,7 @@ namespace XSplitScreen
             private readonly string colorFormatString = "0:0.00";
             private readonly float warningTimeout = 3f;
             private readonly float warningFadeSpeed = 10f;
-
+            private readonly Color orange = new Color(1f, 0.5f, 0);
             private HGTextMeshProUGUI colorValueText;
 
             private Image backgroundImage;
@@ -1096,7 +1096,7 @@ namespace XSplitScreen
             private Assignment assignment;
 
             private Color requestedColor;
-            private Color warningColor = new Color(0.988f, 0.979f, 0.243f, 1);
+            private Color warningColor;// = new Color(0.988f, 0.979f, 0.243f, 1);
 
             private bool settingsOpen = false;
 
@@ -1114,6 +1114,9 @@ namespace XSplitScreen
                 if (paneFollower.enabled)
                 {
                     backgroundImage.color = Color.Lerp(backgroundImage.color, Color.white, Time.unscaledDeltaTime * Screen.fadeSpeed);
+
+                    float pingPongValue = Mathf.PingPong(Time.unscaledTime * 5f, 1);
+                    warningColor = Color.Lerp(orange, Color.yellow, pingPongValue);
 
                     if (warningTimer > 0)
                     {
