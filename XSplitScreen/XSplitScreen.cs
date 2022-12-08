@@ -41,7 +41,7 @@ namespace DoDad.XSplitScreen
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "com.DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "2.0.2";
+        public const string PluginVersion = "2.0.3";
 
         public static Configuration configuration { get; private set; }
         public static XSplitScreen instance { get; private set; }
@@ -384,14 +384,18 @@ namespace DoDad.XSplitScreen
             bool status = false;
 
             if(configuration != null && instance != null)
-                status = configuration.enabled || MainMenuController.instance.desiredMenuScreen == instance;
+                status = configuration.enabled || MainMenuController.instance.desiredMenuScreen == XSplitScreenMenu.instance;
 
+            Log.LogOutput($"ToggleConditionalHooks: 1 status = '{status}'");
             if (configuration != null)
-                if (configuration.enabled && MainMenuController.instance.desiredMenuScreen != instance)
+                if (configuration.enabled && MainMenuController.instance.desiredMenuScreen != XSplitScreenMenu.instance)
                     return;
 
+            Log.LogOutput($"ToggleConditionalHooks: 2 status = '{status}'");
             if (exit)
                 status = false;
+
+            Log.LogOutput($"ToggleConditionalHooks: 3 status = '{status}'");
 
             if (status)
             {
@@ -1193,7 +1197,12 @@ namespace DoDad.XSplitScreen
 
             if (!eventSystem || Run.instance)
             {
-                eventSystem = self.eventSystemLocator?.eventSystem;
+                MPEventSystem eventSystemOverride = self.eventSystemLocator?.eventSystem;
+
+                if (eventSystemOverride)
+                {
+                    eventSystem = eventSystemOverride;
+                }
 
                 if (!eventSystem)
                 {

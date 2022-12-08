@@ -77,6 +77,10 @@ Wiism
 
 ## Changelog
 
+**2.0.3**
+
+- Fixed bug where controllers were not able to interact with UI
+
 **2.0.2**
 
 - Added fancy color cycle for warning triangle
