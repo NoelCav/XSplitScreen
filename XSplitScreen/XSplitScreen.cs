@@ -10,29 +10,25 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
-using DoDad.Library;
 using DoDad.Library.Math;
 using RoR2.UI.MainMenu;
 using System.Collections;
 using UnityEngine.SceneManagement;
 using RoR2.UI;
-using RoR2.UI.SkinControllers;
-using DoDad.Library.Graph;
 using UnityEngine.EventSystems;
 using Rewired.Integration.UnityUI;
 using Rewired.UI;
-using System.Globalization;
 using Mono.Cecil.Cil;
 using UnityEngine.UI;
+using DoDad.XSplitScreen.Components;
 
-namespace XSplitScreen
+namespace DoDad.XSplitScreen
 {
     [BepInDependency(R2API.R2API.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
-    [BepInDependency(Library.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(Library.Library.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
     [R2APISubmoduleDependency(new string[] { "CommandHelper", "LanguageAPI" })]
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
@@ -45,7 +41,7 @@ namespace XSplitScreen
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "com.DoDad";
         public const string PluginName = "XSplitScreen";
-        public const string PluginVersion = "2.0.1";
+        public const string PluginVersion = "2.0.2";
 
         public static Configuration configuration { get; private set; }
         public static XSplitScreen instance { get; private set; }
@@ -55,7 +51,7 @@ namespace XSplitScreen
 
         private static readonly Log.LogLevel logLevel = Log.LogLevel.All;
 
-        private static readonly bool developerMode = true;
+        private static readonly bool developerMode = false;
 
         private static Coroutine WaitForMenuRoutine;
         private static Coroutine WaitForRewiredRoutine;
@@ -387,11 +383,11 @@ namespace XSplitScreen
         {
             bool status = false;
 
-            if(configuration != null && XSplitScreenMenu.instance != null)
-                status = configuration.enabled || MainMenuController.instance.desiredMenuScreen == XSplitScreenMenu.instance;
+            if(configuration != null && instance != null)
+                status = configuration.enabled || MainMenuController.instance.desiredMenuScreen == instance;
 
             if (configuration != null)
-                if (configuration.enabled && MainMenuController.instance.desiredMenuScreen != XSplitScreenMenu.instance)
+                if (configuration.enabled && MainMenuController.instance.desiredMenuScreen != instance)
                     return;
 
             if (exit)
@@ -2443,172 +2439,6 @@ namespace XSplitScreen
             }
         }
 
-        public struct Preference
-        {
-            public Color color;
-
-            public int2 position;
-
-            public int displayId;
-            public int playerId;
-            public int profileId;
-
-            public Preference(int playerId)
-            {
-                position = int2.negative;
-                displayId = -1;
-                profileId = -1;
-                this.playerId = playerId;
-                color = Color.white;
-            }
-            public override string ToString()
-            {
-                string newFormat = "Preference(position = '{0}', displayId = '{1}', playerId = '{2}', profileId = '{3}', color = '{4}')";
-
-                return string.Format(newFormat, position, displayId, playerId, profileId, color);
-            }
-            public bool Matches(Preference preference)
-            {
-                return preference.playerId == this.playerId;
-            }
-            public void Update(Assignment assignment)
-            {
-                position = assignment.position;
-                displayId = assignment.displayId;
-                playerId = assignment.playerId;
-                profileId = assignment.profileId;
-                color = assignment.color;
-            }
-        }
-        public struct Assignment
-        {
-            public Controller controller; // Group: Assignment
-
-            public Color color; // Group: Assignment
-
-            public int2 position;  // Group: Screen
-
-            public int displayId;  // Group: Display
-            public int playerId; // Group: Assignment
-            public int profileId; // Group: Assignment
-            public int localId; // Group: Assignment
-
-            public Assignment(Controller controller)
-            {
-                this.controller = controller;
-
-                position = int2.negative;
-                displayId = -1;
-                playerId = -1;
-                profileId = -1;
-                color = Color.white;
-                localId = -1;
-            }
-            public int deviceId
-            {
-                get
-                {
-                    if (controller is null)
-                        return -1;
-
-                    return controller.id;
-                }
-            }
-            public bool isAssigned
-            {
-                get
-                {
-                    return position.IsPositive() && playerId > -1;
-                }
-            }
-            public bool isKeyboard
-            {
-                get
-                {
-                    if(!(controller is null))
-                    {
-                        return controller.type == ControllerType.Keyboard;
-                    }
-
-                    return false;
-                }
-            }
-            public override string ToString()
-            {
-                return $"Assignment(position = '{position}', playerId = '{playerId}', profileId = '{profileId}', displayId = '{displayId}', localId = '{localId}', controller = '{(controller != null ? controller.name : "null")}')";
-            }
-            public bool MatchesPlayer(Preference preference)
-            {
-                return this.playerId == preference.playerId;
-            }
-            public bool MatchesPlayer(Assignment assignment)
-            {
-                return this.playerId == assignment.playerId;
-            }
-            public bool MatchesAssignment(Assignment assignment)
-            {
-                return this.playerId == assignment.playerId && this.deviceId == assignment.deviceId && this.controller.Equals(assignment.controller) && this.position.Equals(assignment.position);
-            }
-            public bool HasController(Controller controller)
-            {
-                if (this.controller is null)
-                    return false;
-
-                return this.controller.Equals(controller);
-            }
-            public bool HasController()
-            {
-                if (this.controller is null)
-                    return false;
-
-                return true;
-            }
-            public void Load(Preference preference)
-            {
-                position = preference.position;
-                displayId = preference.displayId;
-                playerId = preference.playerId;
-                profileId = preference.profileId;
-                color = preference.color;
-            }
-            public void Load(Assignment assignment)
-            {
-                controller = assignment.controller;
-                displayId = assignment.displayId;
-                playerId = assignment.playerId;
-                profileId = assignment.profileId;
-                color = assignment.color;
-            }
-            public void Load(AssignmentManager.Screen screen)
-            {
-                position = screen.position;
-                displayId = ConfigurationManager.ControllerAssignmentState.currentDisplay;
-            }
-            public void Load(Controller controller)
-            {
-                this.controller = controller;
-            }
-            public void ClearPlayer()
-            {
-                this.controller = null;
-                playerId = -1;
-                profileId = -1;
-                color = Color.white;
-            }
-            public void ClearScreen()
-            {
-                position = int2.negative;
-                displayId = -1;
-            }
-            public void ClearAll()
-            {
-                ClearScreen();
-                ClearPlayer();
-                playerId = -1;
-                profileId = -1;
-                color = Color.white;
-            }
-        }
         public enum VerifyStatus
         {
             Success,

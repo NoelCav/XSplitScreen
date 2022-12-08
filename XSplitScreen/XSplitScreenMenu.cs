@@ -8,7 +8,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
-namespace XSplitScreen
+namespace DoDad.XSplitScreen.Components
 {
     class XSplitScreenMenu : BaseMainMenuScreen
     {

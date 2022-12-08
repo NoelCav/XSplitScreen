@@ -10,7 +10,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static UnityEngine.UI.Button;
 
-namespace XSplitScreen
+namespace DoDad.XSplitScreen.Components
 {
     // TODO remove
     // This was supposed to replace ingame buttons but that wasn't a good idea.

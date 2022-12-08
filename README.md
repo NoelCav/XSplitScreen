@@ -80,6 +80,7 @@ Wiism
 **2.0.2**
 
 - Added fancy color cycle for warning triangle
+- Refactor namespace
 
 **2.0.1**
 

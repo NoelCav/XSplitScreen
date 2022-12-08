@@ -1,6 +1,6 @@
 ﻿using BepInEx.Logging;
 
-namespace XSplitScreen
+namespace DoDad.XSplitScreen
 {
     internal static class Log
     {

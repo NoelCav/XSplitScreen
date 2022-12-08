@@ -6,19 +6,14 @@ using Rewired;
 using RoR2;
 using RoR2.UI;
 using RoR2.UI.MainMenu;
-using RoR2.UI.SkinControllers;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
-using static XSplitScreen.ConfigurationManager;
-using static XSplitScreen.ControllerIconManager;
-using static XSplitScreen.XSplitScreen;
+using DoDad.XSplitScreen;
 
-namespace XSplitScreen
+namespace DoDad.XSplitScreen.Components
 {
     public class AssignmentManager : MonoBehaviour
     {
@@ -29,6 +24,7 @@ namespace XSplitScreen
 
         public NodeGraph<Assignment> graph { get; private set; }
 
+        private XSplitScreen.Configuration configuration => XSplitScreen.configuration;
         private UnityEvent onGraphUpdated;
 
         private List<Assignment> changeBuffer;
@@ -611,6 +607,8 @@ namespace XSplitScreen
             private bool centerEnabled;
 
             private Color defaultColor = new Color(1, 1, 1, 0.1f);
+
+            private XSplitScreen.Configuration configuration => XSplitScreen.configuration;
             #endregion
 
             #region Unity Methods
@@ -651,11 +649,11 @@ namespace XSplitScreen
 
                 instance = this;
 
-                texture_display = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display.png");
-                texture_display_center = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_center.png");
-                texture_display_screen = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_screen.png");
-                texture_divider = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/divider.png");
-                texture_plus = assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/plus.png");
+                texture_display = XSplitScreen.assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display.png");
+                texture_display_center = XSplitScreen.assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_center.png");
+                texture_display_screen = XSplitScreen.assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/display_screen.png");
+                texture_divider = XSplitScreen.assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/divider.png");
+                texture_plus = XSplitScreen.assets.LoadAsset<Texture2D>("Assets/DoDad/Textures/plus.png");
                 sprite_display = Sprite.Create(texture_display, new Rect(Vector2.zero, new Vector2(texture_display.width, texture_display.height)), Vector2.zero);
                 sprite_display_center = Sprite.Create(texture_display_center, new Rect(Vector2.zero, new Vector2(texture_display_center.width, texture_display_center.height)), Vector2.zero);
                 sprite_display_screen = Sprite.Create(texture_display_screen, new Rect(Vector2.zero, new Vector2(texture_display_screen.width, texture_display_screen.height)), Vector2.zero);
@@ -897,7 +895,7 @@ namespace XSplitScreen
                     }
                 }
 
-                InformStatus(VerifyStatus.Success);
+                InformStatus(XSplitScreen.VerifyStatus.Success);
             }
             public void OnClickScreenAddPlayer(MonoBehaviour mono)
             {
@@ -921,12 +919,12 @@ namespace XSplitScreen
 
                     Assignment assignmentX = panes[x].GetAssignment();
 
-                    if (verifyStatus == VerifyStatus.InvalidController)
+                    if (verifyStatus == XSplitScreen.VerifyStatus.InvalidController)
                     {
                         if (!assignmentX.HasController())
                             panes[x].InformStatus(verifyStatus);
                     }
-                    else if (verifyStatus == VerifyStatus.InvalidProfile)
+                    else if (verifyStatus == XSplitScreen.VerifyStatus.InvalidProfile)
                     {
                         if (assignmentX.profileId == -1 || assignmentX.profileId >= PlatformSystems.saveSystem.loadedUserProfiles.Count)
                         {
@@ -1035,7 +1033,7 @@ namespace XSplitScreen
             #region Unity Methods
             public void Update()
             {
-                if(showAddPlayerButton && configuration.currentLocalPlayerCount < configuration.maxLocalPlayers)
+                if(showAddPlayerButton && XSplitScreen.configuration.currentLocalPlayerCount < XSplitScreen.configuration.maxLocalPlayers)
                     addPlayerImage.color = Color.Lerp(addPlayerImage.color, addPlayerTargetColor, Time.unscaledDeltaTime * fadeSpeed);
                 else
                     addPlayerImage.color = Color.Lerp(addPlayerImage.color, disabledColor, Time.unscaledDeltaTime * fadeSpeed);
@@ -1101,6 +1099,8 @@ namespace XSplitScreen
             private bool settingsOpen = false;
 
             private float warningTimer;
+
+            private XSplitScreen.Configuration configuration => XSplitScreen.configuration;
             #endregion
 
             #region Unity Methods
@@ -1288,7 +1288,7 @@ namespace XSplitScreen
 
                 SetUILock(configuration.enabled);
 
-                InformStatus(VerifyStatus.Success);
+                InformStatus(XSplitScreen.VerifyStatus.Success);
             }
             #endregion
 
@@ -1336,7 +1336,7 @@ namespace XSplitScreen
             #region UI
             public void InformStatus(XSplitScreen.VerifyStatus verifyStatus)
             {
-                if (verifyStatus != VerifyStatus.Success)
+                if (verifyStatus != XSplitScreen.VerifyStatus.Success)
                 {
                     warningFollower.target = transform.GetComponent<RectTransform>();
                     warningFollower.enabled = true;
