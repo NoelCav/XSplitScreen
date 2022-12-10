@@ -13,6 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="xfundamagebundle" />
+    <None Remove="xfundamagebundle.manifest" />
     <None Remove="xsplitscreenbundle" />
     <None Remove="xsplitscreenbundle.manifest" />
   </ItemGroup>

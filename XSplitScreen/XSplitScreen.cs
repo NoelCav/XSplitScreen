@@ -47,7 +47,7 @@ namespace DoDad.XSplitScreen
         public static XSplitScreen instance { get; private set; }
         public static AssetBundle assets { get; private set; }
         public static Input input { get; private set; }
-        public static GameObject buttonTemplate { get; private set; }
+        internal static GameObject buttonTemplate { get; private set; }
 
         private static readonly Log.LogLevel logLevel = Log.LogLevel.All;
 
@@ -2459,7 +2459,7 @@ namespace DoDad.XSplitScreen
         }
         public struct Language
         {
-            // TODO use language folder
+            // TODO clean up & use language folder
             public static readonly string MSG_DISCORD_LINK_HREF = "https://discord.gg/maHhJSv62G";
             public static readonly string MSG_DISCORD_LINK_STRING = "Discord";
             public static readonly string MSG_DISCORD_LINK_TOKEN = "XSPLITSCREEN_DISCORD";

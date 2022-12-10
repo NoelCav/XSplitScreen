@@ -23,7 +23,7 @@ namespace DoDad.XSplitScreen.Components
         public List<Icon> icons { get; private set; }
         public RectTransform followerContainer { get; private set; }
 
-        // TODO move references to XSplitScreenMenu or ConfigurationManager
+        // TODO move references to appropriate area and use Library.ResourceHelper
         public Sprite sprite_Dinput { get; private set; }
         public Sprite sprite_Xinput { get; private set; }
         public Sprite sprite_Keyboard { get; private set; }
