@@ -38,64 +38,64 @@
 
   <ItemGroup>
     <Reference Include="Decalicious">
-      <HintPath>Decalicious.dll</HintPath>
+      <HintPath>libs\Decalicious.dll</HintPath>
     </Reference>
     <Reference Include="EOS">
-      <HintPath>EOS.dll</HintPath>
+      <HintPath>libs\EOS.dll</HintPath>
     </Reference>
     <Reference Include="Facepunch.Steamworks">
-      <HintPath>Facepunch.Steamworks.dll</HintPath>
+      <HintPath>libs\Facepunch.Steamworks.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="KdTreeLib">
-      <HintPath>KdTreeLib.dll</HintPath>
+      <HintPath>libs\KdTreeLib.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Mono.Security">
-      <HintPath>Mono.Security.dll</HintPath>
+      <HintPath>libs\Mono.Security.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="pb_Stl">
-      <HintPath>pb_Stl.dll</HintPath>
+      <HintPath>libs\pb_Stl.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Poly2Tri">
-      <HintPath>Poly2Tri.dll</HintPath>
+      <HintPath>libs\Poly2Tri.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="ProBuilderCore">
-      <HintPath>ProBuilderCore.dll</HintPath>
+      <HintPath>libs\ProBuilderCore.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="ProBuilderMeshOps">
-      <HintPath>ProBuilderMeshOps.dll</HintPath>
+      <HintPath>libs\ProBuilderMeshOps.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="R2API.ContentManagement">
-      <HintPath>R2API.ContentManagement.dll</HintPath>
+      <HintPath>libs\R2API.ContentManagement.dll</HintPath>
     </Reference>
     <Reference Include="R2API.Core">
-      <HintPath>R2API.Core.dll</HintPath>
+      <HintPath>libs\R2API.Core.dll</HintPath>
     </Reference>
     <Reference Include="R2API.Items">
-      <HintPath>R2API.Items.dll</HintPath>
+      <HintPath>libs\R2API.Items.dll</HintPath>
     </Reference>
     <Reference Include="R2API.Language">
-      <HintPath>R2API.Language.dll</HintPath>
+      <HintPath>libs\R2API.Language.dll</HintPath>
     </Reference>
     <Reference Include="R2API.Prefab">
-      <HintPath>R2API.Prefab.dll</HintPath>
+      <HintPath>libs\R2API.Prefab.dll</HintPath>
     </Reference>
     <Reference Include="Rewired_Windows_Lib">
-      <HintPath>Rewired_Windows_Lib.dll</HintPath>
+      <HintPath>libs\Rewired_Windows_Lib.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SimpleJSON">
-      <HintPath>SimpleJSON.dll</HintPath>
+      <HintPath>libs\SimpleJSON.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="XLibrary">
-      <HintPath>XLibrary.dll</HintPath>
+      <HintPath>libs\XLibrary.dll</HintPath>
     </Reference>
   </ItemGroup>
 
