@@ -102,7 +102,7 @@ namespace DoDad.XSplitScreen
                         On.RoR2.CameraRigController.Start += CameraRigController_Start;
                         On.RoR2.UI.HUD.OnEnable += HUD_OnEnable;
                         On.RoR2.PauseManager.CCTogglePause += PauseManager_CCTogglePause;
-                        On.RoR2.UI.MPEventSystem.Update += MPEventSystem_Update;
+                        //On.RoR2.UI.MPEventSystem.Update += MPEventSystem_Update;
                         On.RoR2.UI.SimpleDialogBox.Create += SimpleDialogBox_Create;
                         On.RoR2.LocalCameraEffect.OnUICameraPreCull += LocalCameraEffect_OnUICameraPreCull;
                         On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal += CombatHealthBarViewer_SetLayoutHorizontal;
@@ -143,7 +143,7 @@ namespace DoDad.XSplitScreen
                         On.RoR2.CameraRigController.Start -= CameraRigController_Start;
                         On.RoR2.UI.HUD.OnEnable -= HUD_OnEnable;
                         On.RoR2.PauseManager.CCTogglePause -= PauseManager_CCTogglePause;
-                        On.RoR2.UI.MPEventSystem.Update -= MPEventSystem_Update;
+                        //On.RoR2.UI.MPEventSystem.Update -= MPEventSystem_Update;
                         On.RoR2.UI.SimpleDialogBox.Create -= SimpleDialogBox_Create;
                         On.RoR2.LocalCameraEffect.OnUICameraPreCull -= LocalCameraEffect_OnUICameraPreCull;
                         On.RoR2.UI.CombatHealthBarViewer.SetLayoutHorizontal -= CombatHealthBarViewer_SetLayoutHorizontal;
@@ -921,7 +921,7 @@ namespace DoDad.XSplitScreen
 
             var pointer = typeof(EventSystem).GetMethod(nameof(EventSystem.Update), (BindingFlags)(-1)).MethodHandle.GetFunctionPointer();
             var baseUpdate = (Action)Activator.CreateInstance(typeof(Action), self, pointer);
-
+            
             baseUpdate();
 
             EventSystem.current = current;
