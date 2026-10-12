@@ -43,6 +43,11 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		private GameObject _titleText;
 		private LanguageTextMeshController _titleController;
+
+		/// <summary>
+		/// True while holding cancel ramps up controller rumble
+		/// </summary>
+		private bool _isRumbling;
 		#endregion
 
 		#region Unity Lifecycle
@@ -73,6 +78,8 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		public void Update()
 		{
+			StopRumbleIfReleased();
+
 			if (!LocalUserPanel.AllowChanges)
 				return;
 
@@ -97,6 +104,7 @@ namespace Dodad.XSplitscreen.Components
 				if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(15))
 				{
 					Slot.LocalPlayer.SetVibration(0, Slot.LocalPlayer.GetVibration(0) + (Time.deltaTime * 10f), true);
+					_isRumbling = true;
 					if (Slot.LocalPlayer.GetButtonTimedPressDown(15, 0.5f))
 						Slot.TryRemoveSlot();// TryRemovePlayerFromSlot(currentPlayer, slot);
 				}
@@ -123,6 +131,21 @@ namespace Dodad.XSplitscreen.Components
 					}
 				}
 			}
+		}
+
+		/// <summary>
+		/// Holding cancel ramps up rumble; reset it if the button is released before the player is removed
+		/// </summary>
+		private void StopRumbleIfReleased()
+		{
+			if (!_isRumbling)
+				return;
+
+			if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(15))
+				return;
+
+			Slot.LocalPlayer?.SetVibration(0, 0f, true);
+			_isRumbling = false;
 		}
 
 		#endregion

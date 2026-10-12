@@ -42,7 +42,7 @@ namespace Dodad.XSplitscreen
 
 		private static bool LoggedGameBuild;
 
-		private static Color[] _multiplayerColors;
+		private static Color[] _multiplayerColors = HookManager.DefaultMultiplayerColors;
 
 		#endregion
 
@@ -435,7 +435,8 @@ namespace Dodad.XSplitscreen
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 
-                var resourceStream = assembly.GetManifestResourceStream(assembly.GetManifestResourceNames().Last());
+                var resourceName = assembly.GetManifestResourceNames().First(x => x.EndsWith("xsplitscreenbundle"));
+                var resourceStream = assembly.GetManifestResourceStream(resourceName);
 
                 using (resourceStream)
                     Resources = AssetBundle.LoadFromStream(resourceStream);
@@ -501,7 +502,7 @@ namespace Dodad.XSplitscreen
 			var lunOriginal = typeof(RoR2.NetworkUser).GetMethod("UpdateUserName", BindingFlags.Instance | BindingFlags.Public);
 			var lunPatch = typeof(Plugin).GetMethod("NetworkUser_UpdateUserName", BindingFlags.Static | BindingFlags.NonPublic);
 
-			TryPatch(lunOriginal, prefix: lunPatch);
+			TryPatch(lunOriginal, postfix: lunPatch);
 
 			// Combat health bar fix
 
@@ -553,6 +554,7 @@ namespace Dodad.XSplitscreen
             titleButtonLanguage.token = "XSS_NAME";
 
             var titleButton = titleObject.GetComponent<HGButton>();
+            MainMenuTitleButton = titleButton;
             titleButton.hoverToken = "XSS_NAME_HOVER";
             titleButton.requiredTopLayer = MainMenuController.instance.singlePlayerButton.requiredTopLayer;
             titleButton.hoverLanguageTextMeshController = MainMenuController.instance.singlePlayerButton.hoverLanguageTextMeshController;
@@ -737,15 +739,28 @@ namespace Dodad.XSplitscreen
 			return false;
 		}
 
+		/// <summary>
+		/// Show profile names instead of the platform name for local splitscreen players
+		/// (postfix: the vanilla method overwrites userName)
+		/// </summary>
 		private static void NetworkUser_UpdateUserName(RoR2.NetworkUser __instance)
 		{
-			if (__instance.localUser == null)
+			ApplyLocalProfileName(__instance, 60);
+		}
+
+		private static void ApplyLocalProfileName(RoR2.NetworkUser networkUser, int framesLeft)
+		{
+			if (!networkUser || !networkUser.isLocalPlayer || !SplitscreenUserManager.IsSplitscreenEnabled)
+				return;
+
+			if (networkUser.localUser?.userProfile != null)
 			{
-				ExecuteNextFrame.Invoke(() => NetworkUser_UpdateUserName(__instance));
+				networkUser.userName = networkUser.localUser.userProfile.name;
 			}
-			else
+			else if (framesLeft > 0)
 			{
-				__instance.userName = __instance.localUser.userProfile.name;
+				// The local user is linked shortly after the network user spawns
+				ExecuteNextFrame.Invoke(() => ApplyLocalProfileName(networkUser, framesLeft - 1));
 			}
 		}
 
@@ -838,7 +853,8 @@ namespace Dodad.XSplitscreen
 		/// <param name="__0"></param>
 		private static void SetButtonInteractable(MainMenuController __instance, bool __0)
         {
-            MainMenuTitleButton.interactable = __0;
+            if (MainMenuTitleButton)
+                MainMenuTitleButton.interactable = __0;
 		}
 
 		//-----------------------------------------------------------------------------------------------------------

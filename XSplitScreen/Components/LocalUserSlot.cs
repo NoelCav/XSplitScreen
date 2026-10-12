@@ -59,8 +59,6 @@ namespace Dodad.XSplitscreen.Components
 				SetLocalPlayerListenerState(true);
 				_provider.eventSystem = value == null ? null : MPEventSystem.FindByPlayer(value);
 
-				if(_provider.eventSystem != null)
-					_provider.
 				name = $"[{(value == null ? "Open" : value.name)}] Local User Slot {Instances.IndexOf(this)}";
 				OnPlayerChanged?.Invoke(this);
 			}

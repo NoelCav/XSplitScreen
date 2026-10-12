@@ -282,15 +282,20 @@ namespace Dodad.XSplitscreen
 			}
 		}
 
+		/// <summary>
+		/// Vanilla multiplayer colors (RoR2.ColorCatalog)
+		/// </summary>
+		internal static readonly Color[] DefaultMultiplayerColors = new Color[4]
+		{
+				new Color32(252, 62, 62, byte.MaxValue),
+				new Color32(62, 109, 252, byte.MaxValue),
+				new Color32(129, 252, 62, byte.MaxValue),
+				new Color32(252, 241, 62, byte.MaxValue)
+		};
+
 		private static void UpdateMultiplayerColors(bool isSplitscreenEnabled)
 		{
-			var multiplayerColors = new Color[4]
-			{
-					new Color32(252, 62, 62, byte.MaxValue),
-					new Color32(62, 109, 252, byte.MaxValue),
-					new Color32(129, 252, 62, byte.MaxValue),
-					new Color32(252, 241, 62, byte.MaxValue)
-			};
+			var multiplayerColors = DefaultMultiplayerColors;
 
 			if (isSplitscreenEnabled)
 			{
@@ -451,7 +456,10 @@ namespace Dodad.XSplitscreen
 					Log.Print($"Adding '{localUsers[e].UserIndex}' with rect '{localUsers[e].CameraRect}'");
 				}
 
-				rects[localUsers.Count] = uRects;
+				// RunCameraManager indexes ScreenLayouts by the number of cameras created so far,
+				// which can be lower than the player count while the lobby is loading
+				for (int count = 2; count <= localUsers.Count; count++)
+					rects[count] = uRects.Take(count).ToArray();
 			}
 
 			field.SetValue(null, rects);

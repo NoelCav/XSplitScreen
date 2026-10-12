@@ -318,12 +318,13 @@ namespace Dodad.XSplitscreen.Components
 		private void BuildGameModeChoices()
 		{
             List<CarouselController.Choice> list = new List<CarouselController.Choice>();
-            List<string> list2 = gameModePicker.choices.Select((CarouselController.Choice choice) => choice.suboptionDisplayToken).ToList();
             for (GameModeIndex gameModeIndex = (GameModeIndex)0; (int)gameModeIndex < GameModeCatalog.gameModeCount; gameModeIndex++)
             {
                 Run gameModePrefabComponent = GameModeCatalog.GetGameModePrefabComponent(gameModeIndex);
+                if (gameModePrefabComponent == null)
+                    continue;
                 RoR2.ExpansionManagement.ExpansionRequirementComponent component = gameModePrefabComponent.GetComponent<RoR2.ExpansionManagement.ExpansionRequirementComponent>();
-                if (gameModePrefabComponent != null && gameModePrefabComponent.userPickable && (!component || !component.requiredExpansion || RoR2.EntitlementManagement.EntitlementManager.localUserEntitlementTracker.AnyUserHasEntitlement(component.requiredExpansion.requiredEntitlement)))
+                if (gameModePrefabComponent.userPickable && (!component || !component.requiredExpansion || RoR2.EntitlementManagement.EntitlementManager.localUserEntitlementTracker.AnyUserHasEntitlement(component.requiredExpansion.requiredEntitlement)))
                 {
                     list.Add(new CarouselController.Choice
                     {
@@ -334,6 +335,11 @@ namespace Dodad.XSplitscreen.Components
             }
             gameModePicker.choices = list.ToArray();
             gameModePicker.gameObject.SetActive(list.Count > 1);
+            if (list.Count == 0)
+            {
+                Log.Print("No selectable game modes found", Log.ELogChannel.Warning);
+                return;
+            }
             string text = Console.instance.FindConVar("gamemode").GetString();
             bool flag = false;
             for (int num = 0; num < list.Count; num++)
@@ -512,13 +518,21 @@ namespace Dodad.XSplitscreen.Components
 			creditsNav.selectOnDown = multiMonitorButton;
 			creditsNav.mode = UnityEngine.UI.Navigation.Mode.Explicit;
 
+			// The game mode picker is hidden when only one mode is available
+			UnityEngine.UI.Selectable gameModeOrDiscord = gameModeButton.gameObject.activeSelf ? gameModeButton : discordButton;
+
 			var multiMonitorNav = multiMonitorButton.navigation;
 			multiMonitorNav.selectOnUp = creditsButton;
-			multiMonitorNav.selectOnDown = discordButton;
+			multiMonitorNav.selectOnDown = gameModeOrDiscord;
 			multiMonitorNav.mode = UnityEngine.UI.Navigation.Mode.Explicit;
 
+			var gameModeNav = gameModeButton.navigation;
+			gameModeNav.selectOnUp = multiMonitorButton;
+			gameModeNav.selectOnDown = discordButton;
+			gameModeNav.mode = UnityEngine.UI.Navigation.Mode.Explicit;
+
 			var discordNav = discordButton.navigation;
-			discordNav.selectOnUp = multiMonitorButton;
+			discordNav.selectOnUp = gameModeButton.gameObject.activeSelf ? gameModeButton : multiMonitorButton;
 			discordNav.mode = UnityEngine.UI.Navigation.Mode.Explicit;
 			/*discordNav.selectOnDown = backButton;
 
@@ -527,6 +541,7 @@ namespace Dodad.XSplitscreen.Components
 
 			creditsButton.navigation = creditsNav;
 			multiMonitorButton.navigation = multiMonitorNav;
+			gameModeButton.navigation = gameModeNav;
 			discordButton.navigation = discordNav;
 			//backButton.navigation = backNav;
 
