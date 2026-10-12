@@ -48,13 +48,20 @@ namespace Dodad.XSplitscreen
 		private static MethodInfo RunCameraManager_Udpate_Patch;
 		private static void UpdateRunCameraManager(bool isSplitscreenEnabled)
 		{
-			if (isSplitscreenEnabled)
+			try
 			{
-				IL.RoR2.RunCameraManager.Update += RunCameraManager_Update_IL;
+				if (isSplitscreenEnabled)
+				{
+					IL.RoR2.RunCameraManager.Update += RunCameraManager_Update_IL;
+				}
+				else
+				{
+					IL.RoR2.RunCameraManager.Update -= RunCameraManager_Update_IL;
+				}
 			}
-			else
+			catch (Exception e)
 			{
-				IL.RoR2.RunCameraManager.Update -= RunCameraManager_Update_IL;
+				Log.Print($"Could not {(isSplitscreenEnabled ? "hook" : "unhook")} 'RunCameraManager.Update': {e.Message}", ELogChannel.Error);
 			}
 		}
 
@@ -207,11 +214,11 @@ namespace Dodad.XSplitscreen
 
 			if (isSplitscreenEnabled)
 			{
-				Plugin.Patcher.Patch(ChatBox_Update_Orig, prefix: new HarmonyLib.HarmonyMethod(ChatBox_Update_Patch));
+				Plugin.TryPatch(ChatBox_Update_Orig, prefix: ChatBox_Update_Patch);
 			}
 			else
 			{
-				Plugin.Patcher.Unpatch(ChatBox_Update_Orig, ChatBox_Update_Patch);
+				Plugin.TryUnpatch(ChatBox_Update_Orig, ChatBox_Update_Patch);
 			}
 		}
 
@@ -235,11 +242,11 @@ namespace Dodad.XSplitscreen
 
 			if (isSplitscreenEnabled)
 			{
-				Plugin.Patcher.Patch(PlayerCharacterMasterController_OnBodyStart_Orig, postfix: new HarmonyLib.HarmonyMethod(PlayerCharacterMasterController_OnBodyStart_Patch));
+				Plugin.TryPatch(PlayerCharacterMasterController_OnBodyStart_Orig, postfix: PlayerCharacterMasterController_OnBodyStart_Patch);
 			}
 			else
 			{
-				Plugin.Patcher.Unpatch(PlayerCharacterMasterController_OnBodyStart_Orig, PlayerCharacterMasterController_OnBodyStart_Patch);
+				Plugin.TryUnpatch(PlayerCharacterMasterController_OnBodyStart_Orig, PlayerCharacterMasterController_OnBodyStart_Patch);
 			}
 		}
 
@@ -307,11 +314,11 @@ namespace Dodad.XSplitscreen
 
 			if (isSplitscreenEnabled)
 			{
-				Plugin.Patcher.Patch(CameraRigController_Start_Orig, postfix: new HarmonyLib.HarmonyMethod(CameraRigController_Start_Patch));
+				Plugin.TryPatch(CameraRigController_Start_Orig, postfix: CameraRigController_Start_Patch);
 			}
 			else
 			{
-				Plugin.Patcher.Unpatch(CameraRigController_Start_Orig, CameraRigController_Start_Patch);
+				Plugin.TryUnpatch(CameraRigController_Start_Orig, CameraRigController_Start_Patch);
 			}
 		}
 
@@ -361,11 +368,11 @@ namespace Dodad.XSplitscreen
 
 			if (isSplitscreenEnabled)
 			{
-				Plugin.Patcher.Patch(MPEventSystem_OnLastActiveControllerChanged_Orig, postfix: new HarmonyLib.HarmonyMethod(MPEventSystem_OnLastActiveControllerChanged_Patch));
+				Plugin.TryPatch(MPEventSystem_OnLastActiveControllerChanged_Orig, postfix: MPEventSystem_OnLastActiveControllerChanged_Patch);
 			}
 			else
 			{
-				Plugin.Patcher.Unpatch(MPEventSystem_OnLastActiveControllerChanged_Orig, MPEventSystem_OnLastActiveControllerChanged_Patch);
+				Plugin.TryUnpatch(MPEventSystem_OnLastActiveControllerChanged_Orig, MPEventSystem_OnLastActiveControllerChanged_Patch);
 			}
 		}
 
@@ -475,11 +482,11 @@ namespace Dodad.XSplitscreen
 
 			if (isSplitscreenEnabled)
 			{
-				Plugin.Patcher.Patch(PauseStopController_allowMultiplayerPause_Orig, prefix: new HarmonyLib.HarmonyMethod(PauseStopController_allowMultiplayerPause_Patch));
+				Plugin.TryPatch(PauseStopController_allowMultiplayerPause_Orig, prefix: PauseStopController_allowMultiplayerPause_Patch);
 			}
 			else
 			{
-				Plugin.Patcher.Unpatch(PauseStopController_allowMultiplayerPause_Orig, PauseStopController_allowMultiplayerPause_Patch);
+				Plugin.TryUnpatch(PauseStopController_allowMultiplayerPause_Orig, PauseStopController_allowMultiplayerPause_Patch);
 			}
 		}
 

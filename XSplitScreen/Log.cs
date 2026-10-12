@@ -1,73 +1,84 @@
 ﻿using BepInEx.Logging;
-using System;
-using UnityEngine;
 
 namespace Dodad.XSplitscreen
 {
 	internal static class Log
 	{
-		private static ELogChannel ActiveChannels = ELogChannel.None;
 		private static ManualLogSource Source;
+		private static bool DebugEnabled;
 
 		/// <summary>
-		/// Initialize the logger with the plugin log source and log level
+		/// True when the user enabled the Diagnostics option (extra reports for bug reports)
+		/// </summary>
+		internal static bool DiagnosticsEnabled { get; private set; }
+
+		/// <summary>
+		/// Initialize the logger with the plugin log source
 		/// </summary>
 		/// <param name="source"></param>
-		/// <param name="channels"></param>
-		internal static void Init(ManualLogSource source, ELogChannel channels)
+		/// <param name="debug">Print Debug channel messages</param>
+		/// <param name="diagnostics">Print Diag messages</param>
+		internal static void Init(ManualLogSource source, bool debug, bool diagnostics)
 		{
 			Source = source;
-
-			SetActiveChannels(channels);
+			DebugEnabled = debug;
+			DiagnosticsEnabled = diagnostics;
 		}
 
 		/// <summary>
-		/// Set the log level for the plugin
-		/// </summary>
-		/// <param name="channels"></param>
-		internal static void SetActiveChannels(ELogChannel channels)
-		{
-			ActiveChannels = channels;
-
-			Source.LogMessage($"Set log channels to '{channels}'");
-		}
-
-		/// <summary>
-		/// Output a message to the console
+		/// Output a message to the console. Debug messages are only printed when enabled in the config.
 		/// </summary>
 		/// <param name="data"></param>
 		/// <param name="channel"></param>
 		internal static void Print(object data, ELogChannel channel = ELogChannel.Debug)
 		{
-			if (!ActiveChannels.HasFlag(ELogChannel.All) &&
-				!ActiveChannels.HasFlag(channel))
+			if (Source == null)
 				return;
 
-			if (channel.HasFlag(ELogChannel.Message))
-				Source.LogMessage(data);
-			else if (channel.HasFlag(ELogChannel.Info))
-				Source.LogInfo(data);
-			else if (channel.HasFlag(ELogChannel.Warning))
-				Source.LogWarning(data);
-			else if (channel.HasFlag(ELogChannel.Error))
-				Source.LogError(data);
-			else if (channel.HasFlag(ELogChannel.Fatal))
-				Source.LogFatal(data);
-			else if (channel.HasFlag(ELogChannel.Debug))
-				Source.LogDebug(data);
+			switch (channel)
+			{
+				case ELogChannel.Message:
+					Source.LogMessage(data);
+					break;
+				case ELogChannel.Info:
+					Source.LogInfo(data);
+					break;
+				case ELogChannel.Warning:
+					Source.LogWarning(data);
+					break;
+				case ELogChannel.Error:
+					Source.LogError(data);
+					break;
+				case ELogChannel.Fatal:
+					Source.LogFatal(data);
+					break;
+				case ELogChannel.Debug:
+					if (DebugEnabled)
+						Source.LogDebug(data);
+					break;
+			}
 		}
 
-		[Flags]
+		/// <summary>
+		/// Output a diagnostics message. Only printed when Diagnostics is enabled in the config.
+		/// </summary>
+		/// <param name="data"></param>
+		internal static void Diag(object data)
+		{
+			if (Source == null || !DiagnosticsEnabled)
+				return;
+
+			Source.LogInfo($"[Diagnostics] {data}");
+		}
+
 		internal enum ELogChannel
 		{
-			None = 1 << 0,
-			Message = 1 << 1,
-			Info = 1 << 2,
-			Warning = 1 << 3,
-			Error = 1 << 4,
-			Fatal = 1 << 5,
-			Debug = 1 << 6,
-			All = 1 << 7,
+			Message,
+			Info,
+			Warning,
+			Error,
+			Fatal,
+			Debug,
 		}
 	}
 }

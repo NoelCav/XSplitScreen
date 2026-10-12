@@ -2,6 +2,7 @@
 using BepInEx.Configuration;
 using R2API.Utils;
 using System;
+using System.Collections.Generic;
 using Rewired;
 using System.Reflection;
 using UnityEngine;
@@ -16,7 +17,7 @@ using UnityEngine.EventSystems;
 
 namespace Dodad.XSplitscreen
 {
-    [BepInPlugin(PluginGUID, PluginName, "4.0.9")]
+    [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
 	[BepInDependency(LanguageAPI.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
 	public class Plugin : BaseUnityPlugin
@@ -26,6 +27,7 @@ namespace Dodad.XSplitscreen
 		public const string PluginGUID = PluginAuthor + "." + PluginName;
 		public const string PluginAuthor = "com.dodad";
 		public const string PluginName = "XSplitscreen";
+		public const string PluginVersion = "4.0.9";
 
 		public const int HardMaxPlayers = 16;
 
@@ -37,6 +39,8 @@ namespace Dodad.XSplitscreen
 		internal static HarmonyLib.Harmony Patcher { get; private set; }
 
         private static HGButton MainMenuTitleButton;
+
+		private static bool LoggedGameBuild;
 
 		private static Color[] _multiplayerColors;
 
@@ -69,6 +73,11 @@ namespace Dodad.XSplitscreen
                 Log.Print("Loaded language");
 
             SetSubscriptions(true);
+
+			if (FailedHooks.Count == 0)
+				Log.Print($"{PluginName} {PluginVersion} loaded", Log.ELogChannel.Info);
+			else
+				Log.Print($"{PluginName} {PluginVersion} loaded with {FailedHooks.Count} failed hook(s): {string.Join(", ", FailedHooks)}. Some features will not work.", Log.ELogChannel.Warning);
 
 			/*Log.Init(Logger);
 
@@ -334,46 +343,83 @@ namespace Dodad.XSplitscreen
 		//-----------------------------------------------------------------------------------------------------------
 
 		/// <summary>
-		/// Load the user set log levels from the Config file
+		/// Load the logging options from the Config file
 		/// </summary>
 		/// <returns></returns>
 		private static bool LoadLogger()
 		{
-            // Use enum names to retrieve Config entries containing bools to 
-            // determine whether or not we should print messages from that 
-            // log channel
+			// Note: the old "Log Channels" section is no longer read (everything was on by default)
 
-            Log.ELogChannel channels = Log.ELogChannel.None;
+			var debug = Singleton.Config.Bind("Logging", "Debug", false,
+				"Print verbose debug messages. Only useful for development.");
 
-            var logChannelKeys = Enum.GetNames(typeof(Log.ELogChannel))
-                .Where(x => x.ToLower() != "none").ToArray();
+			var diagnostics = Singleton.Config.Bind("Logging", "Diagnostics", false,
+				"Print extra information about controllers, players and menus. Turn this on when reporting a bug and include the log file.");
 
-            int channelCount = logChannelKeys.Length;
+			Log.Init(Singleton.Logger, debug.Value, diagnostics.Value);
 
-			ConfigEntry<bool>[] channelEntries = new ConfigEntry<bool>[channelCount];
+			return true;
+		}
 
-			string section = "Log Channels";
+		//-----------------------------------------------------------------------------------------------------------
+
+		/// <summary>
+		/// Names of hooks that could not be applied
+		/// </summary>
+		internal static readonly List<string> FailedHooks = new List<string>();
+
+		/// <summary>
+		/// Patch a method, logging a clear error instead of throwing if the game changed
+		/// </summary>
+		/// <param name="original">Method to patch (may be null if it was not found)</param>
+		/// <param name="prefix"></param>
+		/// <param name="postfix"></param>
+		/// <returns>true if the patch was applied</returns>
+		internal static bool TryPatch(MethodBase original, MethodInfo prefix = null, MethodInfo postfix = null)
+		{
+			string name = original != null ? $"{original.DeclaringType?.Name}.{original.Name}" : (prefix ?? postfix)?.Name ?? "unknown";
 
 			try
 			{
-                for(int e = 0; e < channelCount; e++)
-                {
-                    channelEntries[e] = Singleton.Config.Bind(section, logChannelKeys[e], true);
+				if (original == null)
+					throw new MissingMethodException("Target method not found (the game may have changed)");
 
-                    if (channelEntries[e].Value)
-                        channels |= (Log.ELogChannel)Enum.Parse(typeof(Log.ELogChannel), logChannelKeys[e]);
-                }
+				Patcher.Patch(original,
+					prefix: prefix == null ? null : new HarmonyLib.HarmonyMethod(prefix),
+					postfix: postfix == null ? null : new HarmonyLib.HarmonyMethod(postfix));
 
-				Log.Init(Singleton.Logger, channels);
+				Log.Print($"Hooked '{name}'");
 
-                return true;
+				return true;
 			}
 			catch (Exception e)
 			{
-				Log.Init(Singleton.Logger, Log.ELogChannel.All);
-				Log.Print(e, Log.ELogChannel.Error);
+				if (!FailedHooks.Contains(name))
+					FailedHooks.Add(name);
+
+				Log.Print($"Could not hook '{name}', the related feature will not work: {e.Message}", Log.ELogChannel.Error);
 
 				return false;
+			}
+		}
+
+		/// <summary>
+		/// Remove a patch applied with TryPatch
+		/// </summary>
+		/// <param name="original"></param>
+		/// <param name="patch"></param>
+		internal static void TryUnpatch(MethodBase original, MethodInfo patch)
+		{
+			if (original == null || patch == null)
+				return;
+
+			try
+			{
+				Patcher.Unpatch(original, patch);
+			}
+			catch (Exception e)
+			{
+				Log.Print($"Could not unhook '{original.DeclaringType?.Name}.{original.Name}': {e.Message}", Log.ELogChannel.Error);
 			}
 		}
 
@@ -419,61 +465,61 @@ namespace Dodad.XSplitscreen
 			var ror2AppResizePlayersOriginal = typeof(RoR2.RoR2Application).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
 			var ror2AppResizePlayersPatch = typeof(Plugin).GetMethod("RoR2AppResizePlayers", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(ror2AppResizePlayersOriginal, prefix: new HarmonyLib.HarmonyMethod(ror2AppResizePlayersPatch));
+			TryPatch(ror2AppResizePlayersOriginal, prefix: ror2AppResizePlayersPatch);
 
 			// Add Rewired players
 
 			var rewiredClonePlayersOriginal = typeof(InputManager_Base).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
 			var rewiredClonePlayersPatch = typeof(Plugin).GetMethod("RewiredClonePlayers", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(rewiredClonePlayersOriginal, prefix: new HarmonyLib.HarmonyMethod(rewiredClonePlayersPatch));
+			TryPatch(rewiredClonePlayersOriginal, prefix: rewiredClonePlayersPatch);
 
             // UI patches
 
             var mmcInteractableOriginal = typeof(RoR2.UI.MainMenu.MainMenuController).GetMethod("SetButtonsInteractible", BindingFlags.Instance | BindingFlags.Public);
             var mmcInteractablePatch = typeof(Plugin).GetMethod("SetButtonInteractable", BindingFlags.Static | BindingFlags.NonPublic);
 
-            Patcher.Patch(mmcInteractableOriginal, prefix: new HarmonyLib.HarmonyMethod(mmcInteractablePatch));
+            TryPatch(mmcInteractableOriginal, prefix: mmcInteractablePatch);
 
 			// Fix input
 
 			var mpeAOriginal = typeof(MPEventSystem).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
 			var mpeAPatch = typeof(Plugin).GetMethod("MPEventSystem_Update", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(mpeAOriginal, prefix: new HarmonyLib.HarmonyMethod(mpeAPatch));
+			TryPatch(mpeAOriginal, prefix: mpeAPatch);
 
 			// Destroy additional canvases
 
 			var cscOriginal = typeof(RoR2.UI.CharacterSelectController).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
 			var cscPatch = typeof(Plugin).GetMethod("CharacterSelectController_Awake", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(cscOriginal, prefix: new HarmonyLib.HarmonyMethod(cscPatch));
+			TryPatch(cscOriginal, prefix: cscPatch);
 
 			// Set local user names
 
 			var lunOriginal = typeof(RoR2.NetworkUser).GetMethod("UpdateUserName", BindingFlags.Instance | BindingFlags.Public);
 			var lunPatch = typeof(Plugin).GetMethod("NetworkUser_UpdateUserName", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(lunOriginal, prefix: new HarmonyLib.HarmonyMethod(lunPatch));
+			TryPatch(lunOriginal, prefix: lunPatch);
 
 			// Combat health bar fix
 
 			var chbOriginal = typeof(RoR2.UI.CombatHealthBarViewer).GetMethod("SetLayoutHorizontal", BindingFlags.Instance | BindingFlags.Public);
 			var chbPatch = typeof(Plugin).GetMethod("CombatHealthBarViewer_SetLayoutHorizontal", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(chbOriginal, prefix: new HarmonyLib.HarmonyMethod(chbPatch));
+			TryPatch(chbOriginal, prefix: chbPatch);
 
 			// Nameplate color
 			var npcOriginal = typeof(RoR2.UI.Nameplate).GetMethod("Initialize", BindingFlags.Instance | BindingFlags.Public);
 			var npcPatch = typeof(Plugin).GetMethod("Nameplate_SetBody", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(npcOriginal, prefix: new HarmonyLib.HarmonyMethod(npcPatch));
+			TryPatch(npcOriginal, prefix: npcPatch);
 
 			// Patch Get Multiplayer Color
 			var mcOriginal = typeof(RoR2.ColorCatalog).GetMethod("GetMultiplayerColor", BindingFlags.Static | BindingFlags.Public);
 			var mcPatch = typeof(Plugin).GetMethod("ColorCatalog_GetMultiplayerColor", BindingFlags.Static | BindingFlags.NonPublic);
 
-			Patcher.Patch(mcOriginal, prefix: new HarmonyLib.HarmonyMethod(mcPatch));
+			TryPatch(mcOriginal, prefix: mcPatch);
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -592,6 +638,12 @@ namespace Dodad.XSplitscreen
         /// </summary>
 		private static void OnMainMenuInitialized()
         {
+			if (!LoggedGameBuild)
+			{
+				LoggedGameBuild = true;
+				Log.Print($"Game build: {RoR2.RoR2Application.GetBuildId()}", Log.ELogChannel.Info);
+			}
+
             if (MainMenuTitleButton != null)
                 return;
 
