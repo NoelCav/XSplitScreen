@@ -166,31 +166,31 @@ namespace Dodad.XSplitscreen
 			if (__0 == null)
 				return;
 
-			if (__instance.networkUser != null && __instance.networkUser.isLocalPlayer && __instance.networkUser.localUser != null)
-			{
-				var user = SplitscreenUserManager.GetUserByInputName(__instance.networkUser.localUser.inputPlayer.name);
+			var localUser = __instance.networkUser != null && __instance.networkUser.isLocalPlayer ? __instance.networkUser.localUser : null;
 
-				if (user.ParticleSystem != null)
-					return;
+			if (localUser?.inputPlayer == null || localUser.userProfile?.fileName == null)
+				return;
 
-				if (__instance.networkUser.localUser.userProfile == null || __instance.networkUser.localUser.userProfile.fileName == null)
-					return;
+			var user = SplitscreenUserManager.GetUserByInputName(localUser.inputPlayer.name);
 
-				var trailKey = SplitScreenSettings.GetOrCreateUserModule<TrailsSettingsModule>(__instance.networkUser.localUser.userProfile.fileName).TrailKey;
+			// The trail is parented to the body, so it is gone (Unity null) once the body is destroyed
+			if (user == null || user.ParticleSystem != null)
+				return;
 
-				if (trailKey == "none")
-				{
-					user.ParticleSystem = new GameObject("Dummy").transform;
+			var trailKey = SplitScreenSettings.GetOrCreateUserModule<TrailsSettingsModule>(localUser.userProfile.fileName)?.TrailKey;
 
-					return;
-				}
+			if (string.IsNullOrEmpty(trailKey) || trailKey == "none")
+				return;
 
-				var particleSystem = ParticleSystemFactory.GetParticleSystem(trailKey);
-				particleSystem.transform.SetParent(__instance.body.transform);
-				particleSystem.transform.localPosition = Vector3.zero;
-				particleSystem.gameObject.SetActive(true);
-				user.ParticleSystem = particleSystem.transform;
-			}
+			var particleSystem = ParticleSystemFactory.GetParticleSystem(trailKey);
+
+			if (particleSystem == null)
+				return;
+
+			particleSystem.SetParent(__0.transform);
+			particleSystem.localPosition = Vector3.zero;
+			particleSystem.gameObject.SetActive(true);
+			user.ParticleSystem = particleSystem;
 		}
 
 		/// <summary>
