@@ -100,11 +100,11 @@ namespace Dodad.XSplitscreen.Components
 					HandleUserConfirm();
 				}
 
-				if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(15))
+				if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(RewiredConsts.Action.UICancel))
 				{
 					Slot.LocalPlayer.SetVibration(0, Slot.LocalPlayer.GetVibration(0) + (Time.deltaTime * 10f), true);
 					_isRumbling = true;
-					if (Slot.LocalPlayer.GetButtonTimedPressDown(15, 0.5f))
+					if (Slot.LocalPlayer.GetButtonTimedPressDown(RewiredConsts.Action.UICancel, 0.5f))
 						Slot.TryRemoveSlot();// TryRemovePlayerFromSlot(currentPlayer, slot);
 				}
 			}
@@ -140,7 +140,7 @@ namespace Dodad.XSplitscreen.Components
 			if (!_isRumbling)
 				return;
 
-			if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(15))
+			if (Slot.LocalPlayer != null && Slot.LocalPlayer.GetButton(RewiredConsts.Action.UICancel))
 				return;
 
 			Slot.LocalPlayer?.SetVibration(0, 0f, true);

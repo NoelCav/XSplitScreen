@@ -697,13 +697,13 @@ namespace Dodad.XSplitscreen.Components
 
 				if (player == null) return;
 
-				LeftRightDelta = player.GetAxis(0);
-				UpDownDelta = player.GetAxis(1);
+				LeftRightDelta = player.GetAxis(RewiredConsts.Action.MoveHorizontal);
+				UpDownDelta = player.GetAxis(RewiredConsts.Action.MoveVertical);
 
-				bool southValue = player.GetButtonDown(14);
-				bool eastValue = player.GetButtonDown(15);
-				bool lbValue = player.GetButtonDown(9);
-				bool rbValue = player.GetButtonDown(10);
+				bool southValue = player.GetButtonDown(RewiredConsts.Action.UISubmit);
+				bool eastValue = player.GetButtonDown(RewiredConsts.Action.UICancel);
+				bool lbValue = player.GetButtonDown(RewiredConsts.Action.UITabLeft);
+				bool rbValue = player.GetButtonDown(RewiredConsts.Action.UITabRight);
 ;
 				if (player.controllers.hasKeyboard)
 				{

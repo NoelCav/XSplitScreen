@@ -62,7 +62,7 @@ namespace Dodad.XSplitscreen.Components
 
 					// (specter) Unclaimed controllers sit on PlayerMain alongside keyboard+mouse;
 					// TryAddPlayerToSlot claims whichever device actually pressed join.
-					if (currentPlayer.GetButtonDown(11))
+					if (currentPlayer.GetButtonDown(RewiredConsts.Action.Start))
 						TryAddPlayerToSlot(currentPlayer);
 				}
 			}
