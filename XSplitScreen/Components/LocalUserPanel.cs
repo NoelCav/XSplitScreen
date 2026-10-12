@@ -19,7 +19,10 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		public static bool AllowChanges { get; internal set; }
 
-		private static bool subscribed;
+		/// <summary>
+		/// The panel currently subscribed to ReInput.ControllerConnectedEvent (only one may be)
+		/// </summary>
+		private static LocalUserPanel controllerEventSubscriber;
 
 		internal const int MAX_USERS = 16;
 
@@ -123,6 +126,9 @@ namespace Dodad.XSplitscreen.Components
 		public void OnDestroy()
 		{
 			Instances.Remove(this);
+
+			// The menu is destroyed without OnExit when a run starts
+			UnsubscribeFromControllerEvents();
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -282,10 +288,10 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		private void OnEnter()
 		{
-			if (!subscribed)
+			if (controllerEventSubscriber == null)
 			{
 				ReInput.ControllerConnectedEvent += OnControllerAddedEvent;
-				subscribed = true;
+				controllerEventSubscriber = this;
 			}
 
 			// Load device icon resources for LocalUserSlot
@@ -310,11 +316,16 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		private void OnExit()
 		{
-			if(subscribed)
-			{
-				ReInput.ControllerConnectedEvent -= OnControllerAddedEvent;
-				subscribed = false;
-			}
+			UnsubscribeFromControllerEvents();
+		}
+
+		private void UnsubscribeFromControllerEvents()
+		{
+			if (controllerEventSubscriber != this)
+				return;
+
+			ReInput.ControllerConnectedEvent -= OnControllerAddedEvent;
+			controllerEventSubscriber = null;
 		}
 
 		//-----------------------------------------------------------------------------------------------------------

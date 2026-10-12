@@ -94,7 +94,8 @@ namespace Dodad.XSplitscreen.Components
 			var eventProvider = gameObject.AddComponent<MPEventSystemProvider>();
 			eventProvider.fallBackToMainEventSystem = true;
 
-			if (monitorId == 0)
+			// monitorId isn't set yet during Awake (it's assigned after AddComponent); the first menu created is display 0
+			if (Singleton == this)
 			{
 				mainPlayer = LocalUserManager.GetRewiredMainPlayer();
 				mainInput = new LocalUserSlot.InputBank();

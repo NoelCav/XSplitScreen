@@ -212,6 +212,7 @@ namespace Dodad.XSplitscreen.Components
 				Instances = null;
 				OnPlayerChanged -= ResolveSlotState;
 			}
+			OnRemovedKeyboardUser -= RefreshIfEmpty;
 			SetLocalPlayerListenerState(false);
 		}
 
@@ -372,7 +373,8 @@ namespace Dodad.XSplitscreen.Components
 			bool foundDisplay = false;
 			int panelCount = LocalUserPanel.Instances.Count;
 
-			while (!foundDisplay)
+			// Visit each panel at most once (wrapping back to the current one)
+			for (int attempt = 0; attempt < panelCount && !foundDisplay; attempt++)
 			{
 				// Calculate next panel index with wraparound
 				panelIndex = (panelIndex + displayDirection + panelCount) % panelCount;
@@ -529,6 +531,7 @@ namespace Dodad.XSplitscreen.Components
 
 			if(!isOccupied)
 			{
+				OnRemovedKeyboardUser -= RefreshIfEmpty; // avoid duplicate subscriptions
 				OnRemovedKeyboardUser += RefreshIfEmpty;
 			}
 			else
