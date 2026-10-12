@@ -66,6 +66,7 @@ namespace Dodad.XSplitscreen
 
 			CreateParticleSystems();
 			SetGenericPatches();
+			Diagnostics.Initialize();
 
             if (!LoadLanguage())
                 return;
@@ -643,6 +644,9 @@ namespace Dodad.XSplitscreen
 				LoggedGameBuild = true;
 				Log.Print($"Game build: {RoR2.RoR2Application.GetBuildId()}", Log.ELogChannel.Info);
 			}
+
+			Diagnostics.SubscribeToControllerEvents();
+			Diagnostics.ReportControllers("main menu loaded");
 
             if (MainMenuTitleButton != null)
                 return;

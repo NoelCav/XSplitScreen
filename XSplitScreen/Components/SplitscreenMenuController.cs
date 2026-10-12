@@ -638,6 +638,8 @@ namespace Dodad.XSplitscreen.Components
 
 			SplitScreenSettings.BatchSaveDirtyUsers();
 
+			Diagnostics.ReportControllers("menu finished, before assigning players");
+
 			var users = LocalUserSlot.Instances.Where(x => x.LocalPlayer != null)
 				.OrderBy(x => !x.IsKeyboardUser)
 				.ToArray();

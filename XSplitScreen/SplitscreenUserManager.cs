@@ -149,6 +149,7 @@ namespace Dodad.XSplitscreen
 			RoR2Application.SetIsInLocalMultiplayer(true);
 			LoadLocalUsers();
 			OnStateChange?.Invoke(true);
+			Diagnostics.ReportLocalUsers("splitscreen enabled");
 			TransitionToLobby(gamemode);
 		}
 
@@ -166,6 +167,7 @@ namespace Dodad.XSplitscreen
 
 			ClearLocalUsers();
 			OnStateChange?.Invoke(false);
+			Diagnostics.ReportLocalUsers("splitscreen disabled");
 		}
 
 		private static void TransitionToLobby(string gamemode)
