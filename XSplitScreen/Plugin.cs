@@ -646,7 +646,8 @@ namespace Dodad.XSplitscreen
 			Diagnostics.ReportControllers("main menu loaded");
 
 			// (specter) Also fires after quitting a run - without this, controllers stay assigned to
-			// splitscreen players and can't navigate the main menu.
+			// splitscreen players and can't navigate the main menu. Local users can only be
+			// changed on the title screen, so this is where the splitscreen session ends.
 			if (SplitscreenUserManager.IsSplitscreenEnabled)
 				SplitscreenUserManager.DisableSplitscreen();
 

@@ -182,6 +182,7 @@ namespace Dodad.XSplitscreen
 
 			isSplitscreenEnabled = false;
 
+			RoR2Application.SetIsInLocalMultiplayer(false);
 			ClearLocalUsers();
 			OnStateChange?.Invoke(false);
 			Diagnostics.ReportLocalUsers("splitscreen disabled");
@@ -223,10 +224,14 @@ namespace Dodad.XSplitscreen
 			localUsers.Clear();
 
 			// (specter) Falls back to the platform's default profile (same as vanilla's own
-			// bootstrap) rather than crashing if localUsersList is ever unexpectedly empty here.
-			var profile = LocalUserManager.localUsersList.Count > 0
-				? LocalUserManager.localUsersList[0].userProfile
+			// bootstrap) rather than crashing if the local user list is ever unexpectedly empty here.
+			var profile = LocalUserManager.readOnlyLocalUsersList.Count > 0
+				? LocalUserManager.readOnlyLocalUsersList[0].userProfile
 				: PlatformSystems.saveSystem.userProfile;
+
+			// Sign the users out before moving their controllers, so they're never
+			// signed in while their controllers are being stripped
+			LocalUserManager.ClearUsers();
 
 			var playerMain = ReInput.players.GetPlayer("PlayerMain");
 
@@ -241,7 +246,9 @@ namespace Dodad.XSplitscreen
 				player.controllers.ClearAllControllers();
 			}
 
-			LocalUserManager.ClearUsers();
+			if (profile == null)
+				return;
+
 			LocalUserManager.SetLocalUsers(new LocalUserManager.LocalUserInitializationInfo[1]
 			{
 				new LocalUserManager.LocalUserInitializationInfo()
