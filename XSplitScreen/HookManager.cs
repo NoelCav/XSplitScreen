@@ -308,20 +308,19 @@ namespace Dodad.XSplitscreen
 
 		private static void OnControllerConnected(ControllerStatusChangedEventArgs args)
 		{
+			if (args.controllerType != ControllerType.Joystick)
+				return;
+
 			var localUsers = SplitscreenUserManager.LocalUsers;
 
-			foreach (var user in localUsers)
-			{
-				// (specter) Exclude keyboard/mouse users (joystickCount==0 for them too) and stop
-				// after the first match, or a reconnecting gamepad lands on whichever eligible user
-				// is last in the list instead of the one that actually needs it.
-				if (user.InputPlayer.controllers.joystickCount == 0 && !user.InputPlayer.controllers.hasKeyboard)
-				{
-					user.InputPlayer.controllers.AddController(args.controller, true);
+			// Already back with a player (e.g. Rewired restored the assignment)
+			if (localUsers.Any(x => x.InputPlayer.controllers.ContainsController(args.controllerType, args.controllerId)))
+				return;
 
-					return;
-				}
-			}
+			// Give it to the first gamepad player who has no controller
+			var user = localUsers.FirstOrDefault(x => x.InputPlayer.controllers.joystickCount == 0 && !x.InputPlayer.controllers.hasKeyboard);
+
+			user?.InputPlayer.controllers.AddController(args.controller, true);
 		}
 
 		private static void UpdateCameraRects(bool isSplitscreenEnabled)

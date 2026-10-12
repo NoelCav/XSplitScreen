@@ -233,17 +233,19 @@ namespace Dodad.XSplitscreen
 			// signed in while their controllers are being stripped
 			LocalUserManager.ClearUsers();
 
+			// Back to the vanilla state: every device belongs to PlayerMain
 			var playerMain = ReInput.players.GetPlayer("PlayerMain");
 
 			foreach (var player in ReInput.players.Players)
 			{
-				if (player.name == "PlayerMain" || player.name == "System")
-					continue;
+				if (player != playerMain)
+					player.controllers.ClearAllControllers();
+			}
 
-				foreach (var controller in player.controllers.Controllers)
-					playerMain.controllers.AddController(controller, false);
-
-				player.controllers.ClearAllControllers();
+			foreach (var controller in ReInput.controllers.Controllers)
+			{
+				if (!playerMain.controllers.ContainsController(controller.type, controller.id))
+					playerMain.controllers.AddController(controller, true);
 			}
 
 			if (profile == null)

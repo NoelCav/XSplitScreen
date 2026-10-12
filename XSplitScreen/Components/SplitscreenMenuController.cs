@@ -658,6 +658,14 @@ namespace Dodad.XSplitscreen.Components
 		{
 			if (!AllowLoad) return;
 
+			// Someone joined or left during the countdown
+			var joined = AssignmentConfigurator.Instances.Where(x => x.HasUser).ToList();
+			if (joined.Count < 2 || !joined.TrueForAll(x => x.IsReady))
+			{
+				AllowLoad = false;
+				return;
+			}
+
 			if (loadTimer > 0f)
 			{
 				loadTimer -= Time.unscaledDeltaTime;
@@ -674,26 +682,7 @@ namespace Dodad.XSplitscreen.Components
 
 			List<UserAssignmentData> assignments = new();
 
-			var controllers = users[users.Length - 1].LocalPlayer.controllers.Controllers.ToList();
-
-			// Shift all input players down
-			for (int i = users.Length - 1; i > 0; i--)
-			{
-				var nextControllers = users[i - 1].LocalPlayer.controllers.Controllers.ToList();
-
-				users[i].LocalPlayer = users[i - 1].LocalPlayer;
-				users[i].LocalPlayer.controllers.ClearAllControllers();
-
-				foreach (var controller in controllers)
-					users[i].LocalPlayer.controllers.AddController(controller, false);
-
-				controllers = nextControllers;
-			}
-
-			// Assign PlayerMain to first slot
-			users[0].LocalPlayer = ReInput.players.GetPlayer("PlayerMain");
-			foreach (var controller in controllers)
-				users[0].LocalPlayer.controllers.AddController(controller, false);
+			AssignInputPlayers(users);
 
 			// Prepare assignments
 			for (int i = 0; i < users.Length; i++)
@@ -715,6 +704,39 @@ namespace Dodad.XSplitscreen.Components
 			CarouselController carousel = gameModeButton.GetComponent<CarouselController>();
 			var gamemodeValue= carousel.GetCurrentValue();
 			SplitscreenUserManager.EnableSplitscreen(gamemodeValue);
+		}
+
+		/// <summary>
+		/// Give player 1 PlayerMain, player 2 Player2 and so on, each with exactly the devices they joined with.
+		/// Unclaimed controllers are left unassigned. Keyboard and mouse stay with player 1 when nobody joined with them.
+		/// </summary>
+		/// <param name="users">Joined slots, keyboard user first</param>
+		private static void AssignInputPlayers(LocalUserSlot[] users)
+		{
+			// Snapshot devices before touching any assignments
+			var devices = users.Select(x => x.LocalPlayer.controllers.Controllers.ToList()).ToList();
+
+			var main = ReInput.players.GetPlayer("PlayerMain");
+			var inputPlayers = new List<Player> { main };
+			inputPlayers.AddRange(ReInput.players.Players.Where(x => x != main));
+
+			foreach (var player in inputPlayers)
+				player.controllers.ClearAllControllers();
+
+			for (int i = 0; i < users.Length; i++)
+			{
+				foreach (var controller in devices[i])
+					inputPlayers[i].controllers.AddController(controller, true);
+			}
+
+			if (!main.controllers.hasKeyboard && !devices.Any(x => x.Any(c => c is Keyboard)))
+			{
+				main.controllers.AddController(ReInput.controllers.Keyboard, true);
+				main.controllers.AddController(ReInput.controllers.Mouse, true);
+			}
+
+			for (int i = 0; i < users.Length; i++)
+				users[i].LocalPlayer = inputPlayers[i];
 		}
 
 		public static void PrintDebugInfo()

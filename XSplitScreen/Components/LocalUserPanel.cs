@@ -358,19 +358,8 @@ namespace Dodad.XSplitscreen.Components
 				}
 			}
 
-			var players = ReInput.players.Players;
-			int playerCount = players.Count;
-			int playerId = 2;
-
-			for (int e = playerId; e < playerCount; e++)
-			{
-				if (players[e].controllers.joystickCount == 0)
-				{
-					players[e].controllers.AddController(args.controller, false);
-
-					return;
-				}
-			}
+			// Otherwise it belongs to PlayerMain, where pressing Start lets it join
+			LocalUserManager.GetRewiredMainPlayer().controllers.AddController(args.controller, true);
 		}
 	}
 }
