@@ -7,7 +7,6 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using MonoMod.Cil;
 
 namespace Dodad.XSplitscreen.Components
 {
