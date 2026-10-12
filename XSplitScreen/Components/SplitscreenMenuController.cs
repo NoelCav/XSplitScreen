@@ -379,6 +379,7 @@ namespace Dodad.XSplitscreen.Components
 			}
 
 			var backPanelClone = Instantiate(backPanelTemplate.gameObject);
+			UIHelper.RemoveEntitlementGates(backPanelClone);
 			var backPanelRect = backPanelClone.GetComponent<RectTransform>();
 			backPanelRect.SetParent(mainPanel);
 			backPanelRect.offsetMax = new Vector2(700, 0);
@@ -398,7 +399,6 @@ namespace Dodad.XSplitscreen.Components
 				backButton.OnClickCustom();
 			});
 
-			Destroy(backButton.GetComponent("DisableIfNoExpansion"));
 			backButton.GetComponent<MPEventSystemLocator>().Awake();
 
 			var backJuice = backButton.transform.parent.GetComponent<UIJuice>();
@@ -410,6 +410,9 @@ namespace Dodad.XSplitscreen.Components
 
 			// Menu panel setup
 			var menuButtonPanelClone = Instantiate(menuButtonPanelTemplate.gameObject);
+			// The Discord button below is cloned from the Simulacrum button (Survivors of the Void),
+			// and Multi Monitor / Credits are cloned from Discord
+			UIHelper.RemoveEntitlementGates(menuButtonPanelClone);
 			var menuButtonPanelRect = menuButtonPanelClone.GetComponent<RectTransform>();
 			menuButtonPanelRect.SetParent(mainPanel);
 			menuButtonPanelRect.offsetMax = Vector2.zero;
