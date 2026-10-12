@@ -275,7 +275,7 @@ namespace Dodad.XSplitscreen.Components
 		private void UpdateProfileName()
 		{
 			if (_profileKeys == null || _profileKeys.Length == 0)
-				Options.SetMessage("Guest", new Color(1f, 1f, 0f));
+				Options.SetMessage("XSS_CONFIG_PROFILE", new Color(1f, 1f, 0f));
 			else
 				Options.SetMessage(PlatformSystems.saveSystem.GetProfile(_profileKeys[_profileIndex]).name, new Color(1f, 1f, 0f));
 		}

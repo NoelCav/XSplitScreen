@@ -97,59 +97,45 @@ namespace Dodad.XSplitscreen
 		}
 
 		/// <summary>
-		/// Load language file from disk and merge with defaults
+		/// Register the language tokens. Built-in text can be overridden per token in
+		/// config/XSplitscreen/language.json; language.default.json is a reference copy of the built-in text.
 		/// </summary>
 		private static bool LoadLanguage()
 		{
-			var baseDir = Path.GetDirectoryName(Singleton.Config.ConfigFilePath);
-			var filePath = Path.Combine(baseDir, "XSplitscreen", "language.json");
+			var directory = Path.Combine(Path.GetDirectoryName(Singleton.Config.ConfigFilePath), "XSplitscreen");
+			var overridesPath = Path.Combine(directory, "language.json");
+			var referencePath = Path.Combine(directory, "language.default.json");
+
+			MultiDictionary defaultTokens = CreateDefaultLanguageTokens();
+			MultiDictionary overrides = new MultiDictionary();
 
 			try
 			{
-				// Create default language tokens
-				MultiDictionary defaultTokens = CreateDefaultLanguageTokens();
-				MultiDictionary userTokens = null;
+				Directory.CreateDirectory(directory);
 
-				// Check if custom language file exists
-				if (File.Exists(filePath))
-				{
-					try
-					{
-						string fileContent = File.ReadAllText(filePath);
-						userTokens = JsonConvert.DeserializeObject<MultiDictionary>(fileContent);
+				// Reference copy for translators, never read back
+				File.WriteAllText(referencePath, JsonConvert.SerializeObject(defaultTokens, Formatting.Indented));
 
-						// Validate the loaded data
-						if (userTokens == null)
-						{
-							Log.Print("Language file exists but contains invalid data. Using defaults.", Log.ELogChannel.Warning);
-							userTokens = null;
-						}
-					}
-					catch (JsonException jsonEx)
-					{
-						Log.Print($"Error parsing language file: {jsonEx.Message}. Using defaults.", Log.ELogChannel.Warning);
-					}
-					catch (IOException ioEx)
-					{
-						Log.Print($"Error reading language file: {ioEx.Message}. Using defaults.", Log.ELogChannel.Warning);
-					}
-				}
-				else
+				if (File.Exists(overridesPath))
 				{
-					Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-					File.Create(filePath).Dispose();
+					var loaded = JsonConvert.DeserializeObject<MultiDictionary>(File.ReadAllText(overridesPath));
+
+					if (loaded != null)
+						overrides = CleanLanguageOverrides(defaultTokens, loaded);
 				}
 
-				// Merge user tokens with defaults or use defaults if no valid user file
-				MultiDictionary finalTokens = userTokens != null ?
-					MergeLanguageTokens(defaultTokens, userTokens) :
-					defaultTokens;
+				// Older versions saved every built-in token here, which then overrode any later text fix
+				File.WriteAllText(overridesPath, JsonConvert.SerializeObject(overrides, Formatting.Indented));
+			}
+			catch (Exception e)
+			{
+				Log.Print($"Could not load language overrides, using the built-in text: {e.Message}", Log.ELogChannel.Warning);
+				overrides = new MultiDictionary();
+			}
 
-				// Save the complete language file for user reference/editing
-				File.WriteAllText(filePath, JsonConvert.SerializeObject(finalTokens, Formatting.Indented));
-
-				// Add tokens to LanguageAPI
-				foreach (var language in finalTokens)
+			try
+			{
+				foreach (var language in MergeLanguageTokens(defaultTokens, overrides))
 				{
 					foreach (var token in language.Value)
 					{
@@ -166,6 +152,42 @@ namespace Dodad.XSplitscreen
 				return false;
 			}
 		}
+
+		/// <summary>
+		/// Keep only real customizations: drop entries identical to the built-in text (older versions saved
+		/// every token). Language names are matched to the built-in ones ignoring case.
+		/// </summary>
+		private static MultiDictionary CleanLanguageOverrides(MultiDictionary defaultTokens, MultiDictionary loaded)
+		{
+			var cleaned = new MultiDictionary();
+
+			foreach (var language in loaded)
+			{
+				if (language.Value == null)
+					continue;
+
+				var languageName = defaultTokens.Keys.FirstOrDefault(x => string.Equals(x, language.Key, StringComparison.OrdinalIgnoreCase)) ?? language.Key;
+				defaultTokens.TryGetValue(languageName, out var builtIn);
+
+				foreach (var token in language.Value)
+				{
+					if (token.Value == null)
+						continue;
+
+					if (builtIn != null && builtIn.TryGetValue(token.Key, out var builtInValue) && builtInValue == token.Value)
+						continue;
+
+					if (!cleaned.ContainsKey(languageName))
+						cleaned.Add(languageName, new StringDictionary());
+
+					cleaned[languageName][token.Key] = token.Value;
+				}
+			}
+
+			return cleaned;
+		}
+
+		//-----------------------------------------------------------------------------------------------------------
 
 		/// <summary>
 		/// Creates the default language tokens for all supported languages
@@ -207,7 +229,7 @@ namespace Dodad.XSplitscreen
 			});
 
 			// Portuguese (Brazilian)
-			string ptBrKey = "pt-br";
+			string ptBrKey = "pt-BR";
 			tokens.Add(ptBrKey, new StringDictionary
 			{
 				{ "XSS_NAME_HOVER", "Modificar as configurações da tela-dividida." },
@@ -230,7 +252,7 @@ namespace Dodad.XSplitscreen
 			});
 
 			// French
-			string frKey = "fr";
+			string frKey = "FR";
 			tokens.Add(frKey, new StringDictionary
 			{
 				{ "XSS_NAME_HOVER", "Modifier les paramètres de splitscreen." },
