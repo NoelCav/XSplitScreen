@@ -483,12 +483,6 @@ namespace Dodad.XSplitscreen
 
             TryPatch(mmcInteractableOriginal, prefix: mmcInteractablePatch);
 
-			// Fix input
-
-			var mpeAOriginal = typeof(MPEventSystem).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
-			var mpeAPatch = typeof(Plugin).GetMethod("MPEventSystem_Update", BindingFlags.Static | BindingFlags.NonPublic);
-
-			TryPatch(mpeAOriginal, prefix: mpeAPatch);
 
 			// Destroy additional canvases
 
@@ -773,77 +767,6 @@ namespace Dodad.XSplitscreen
 					Destroy(__instance.gameObject);
 				}
 			}));
-		}
-
-		private static MethodInfo _mpEventSystemBaseUpdate;
-
-		private static bool MPEventSystem_Update(MPEventSystem __instance)
-		{
-			var baseUpdate = (EventSystem es) =>
-			{
-				if (EventSystem.current != __instance)
-				{
-					return;
-				}
-				es.TickModules();
-				bool flag = false;
-				int count = es.m_SystemInputModules.Count;
-				for (int i = 0; i < count; i++)
-				{
-					BaseInputModule baseInputModule = es.m_SystemInputModules[i];
-					if (baseInputModule.IsModuleSupported() && baseInputModule.ShouldActivateModule())
-					{
-						if (es.m_CurrentInputModule != baseInputModule)
-						{
-							es.ChangeEventModule(baseInputModule);
-							flag = true;
-						}
-						break;
-					}
-				}
-				if (es.m_CurrentInputModule == null)
-				{
-					for (int j = 0; j < count; j++)
-					{
-						BaseInputModule baseInputModule2 = es.m_SystemInputModules[j];
-						if (baseInputModule2.IsModuleSupported())
-						{
-							es.ChangeEventModule(baseInputModule2);
-							flag = true;
-							break;
-						}
-					}
-				}
-				if (!flag && es.m_CurrentInputModule != null)
-				{
-					es.m_CurrentInputModule.Process();
-				}
-			};
-
-			EventSystem eventSystem = EventSystem.current;
-			EventSystem.current = __instance;
-
-			baseUpdate(__instance);
-
-			EventSystem.current = eventSystem;
-
-			__instance.ValidateCurrentSelectedGameobject();
-
-			if (__instance.player.GetButtonDown(25) &&
-				(PauseScreenController.instancesList.Count == 0 || SimpleDialogBox.instancesList.Count == 0))
-			{
-				if (!RoR2.PauseManager.isPaused)
-				{
-					RoR2.PauseManager.PausingPlayerID = __instance.player.id;
-				}
-				if (RoR2.PauseManager.PausingPlayerID == __instance.player.id &&
-					RoR2.Console.instance != null)
-				{
-					RoR2.Console.instance.SubmitCmd(null, "pause");
-				}
-			}
-
-			return false;
 		}
 
 		/// <summary>
