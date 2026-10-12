@@ -331,3 +331,11 @@ ASALocalRun/
 /xsplitscreenbundle_source/Textures/icons.psd
 /xsplitscreenbundle_source/Textures/display.psd
 /xsplitscreenbundle_source/Prefabs/Menu (Old).prefab
+
+# Local working notes and AI tooling (never pushed)
+.dev/
+.claude/
+CLAUDE.md
+
+# Decompiled game code (proprietary, never commit)
+decomp/
