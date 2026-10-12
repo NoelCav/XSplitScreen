@@ -7,7 +7,6 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using static RoR2.UI.CursorIndicatorController;
 
 namespace Dodad.XSplitscreen.Components
 {

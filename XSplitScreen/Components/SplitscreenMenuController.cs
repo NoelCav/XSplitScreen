@@ -213,14 +213,6 @@ namespace Dodad.XSplitscreen.Components
 
 			if (EventSystem.current.currentSelectedGameObject == null)
 				EventSystem.current.SetSelectedGameObject(discordButton.gameObject);
-
-			/*if (EventSystem.current.currentSelectedGameObject != null) return;
-
-			EventSystem.current.SetSelectedGameObject(creditsButton.gameObject);*/
-			/*if (multiMonitorButton.interactable)
-				EventSystem.current.SetSelectedGameObject(multiMonitorButton.gameObject);
-			else
-				EventSystem.current.SetSelectedGameObject(discordButton.gameObject);*/
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -534,16 +526,11 @@ namespace Dodad.XSplitscreen.Components
 			var discordNav = discordButton.navigation;
 			discordNav.selectOnUp = gameModeButton.gameObject.activeSelf ? gameModeButton : multiMonitorButton;
 			discordNav.mode = UnityEngine.UI.Navigation.Mode.Explicit;
-			/*discordNav.selectOnDown = backButton;
-
-			var backNav = backButton.navigation;
-			backNav.selectOnUp = discordButton;*/
 
 			creditsButton.navigation = creditsNav;
 			multiMonitorButton.navigation = multiMonitorNav;
 			gameModeButton.navigation = gameModeNav;
 			discordButton.navigation = discordNav;
-			//backButton.navigation = backNav;
 
 			// Text prefab
 			TextPrefab = new GameObject("SimpleText Prefab", typeof(RectTransform), typeof(HGTextMeshProUGUI));
@@ -601,26 +588,6 @@ namespace Dodad.XSplitscreen.Components
 			// Credits
 
 			transform.Find("Credits Panel").gameObject.AddComponent<CreditsController>();
-		}
-
-		private static void LogHierarchy(Transform root)
-		{
-			if (root == null)
-			{
-				Log.Print("LogHierarchy: root is null");
-				return;
-			}
-
-			void Recurse(Transform t, string path, int depth)
-			{
-				string indent = new string(' ', depth * 2);
-				Log.Print($"{indent}{(string.IsNullOrEmpty(path) ? "" : path)}{t.name} (activeSelf: {t.gameObject.activeSelf}, activeInHierarchy: {t.gameObject.activeInHierarchy})");
-
-				for (int i = 0; i < t.childCount; i++)
-					Recurse(t.GetChild(i), string.IsNullOrEmpty(path) ? t.name + "/" : path + t.name + "/", depth + 1);
-			}
-
-			Recurse(root, "", 0);
 		}
 
 		public void OnClaimUpdated(bool state)

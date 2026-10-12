@@ -230,28 +230,9 @@ namespace Dodad.XSplitscreen
 			});
 		}
 
-		/// <summary>
-		/// Gets the list of current local users
-		/// </summary>
-		/// <returns>A copy of the local users list</returns>
-		public static List<LocalUser> GetLocalUsers()
-		{
-			return new List<LocalUser>(localUsers);
-		}
-
 		public static LocalUser GetUserByInputName(string name)
 		{
 			return localUsers.Find(user => user.InputPlayer.name == name);
-		}
-
-		/// <summary>
-		/// Gets a local user by their user index
-		/// </summary>
-		/// <param name="userIndex">The user's index</param>
-		/// <returns>The local user or null if not found</returns>
-		public static LocalUser GetUserByIndex(int userIndex)
-		{
-			return localUsers.Find(user => user.UserIndex == userIndex);
 		}
 	}
 }

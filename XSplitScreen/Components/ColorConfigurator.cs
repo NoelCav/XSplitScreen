@@ -11,13 +11,10 @@ namespace Dodad.XSplitscreen.Components
 	internal class ColorConfigurator : OptionConfigurator
 	{
 		private static Texture2D Hue;
-		private static Texture2D SaturationGradient;
-		private static Texture2D AlphaGradient;
 		private static Color[] ColorSlice;
 
 		private ColorSettingsModule _colorModule;
 		private RectTransform _hueGradient;
-		private RectTransform _alphaGradient;
 		private RectTransform _indicator;
 		private Image _indicatorImage;
 
@@ -48,15 +45,7 @@ namespace Dodad.XSplitscreen.Components
 			}
 			else
 			{
-				/*if (Options.Slot.Input.Up)
-				{
-					OnNavigate(-1);
-				}
-				else if (Options.Slot.Input.Down)
-				{
-					OnNavigate(1);
-				}
-				else */if (Options.Slot.Input.South)
+				if (Options.Slot.Input.South)
 				{
 					OnConfirm();
 				}
@@ -218,7 +207,6 @@ namespace Dodad.XSplitscreen.Components
 		{
 			_indicator.gameObject.SetActive(index > -1);
 			_hueGradient.gameObject.SetActive(index == 0);
-			//_alphaGradient.gameObject.SetActive(index == 1);
 		}
 
 		private void StartDragRoutine()
@@ -261,7 +249,6 @@ namespace Dodad.XSplitscreen.Components
 			if (Hue == null)
 			{
 				Hue = GenerateColorSpectrumGradient(256, 1);
-				AlphaGradient = GenerateBlackToWhiteGradient(256, 1);
 				ColorSlice = Hue.GetPixels(0, 0, 256, 1);
 			}
 
@@ -307,33 +294,6 @@ namespace Dodad.XSplitscreen.Components
 				// Calculate hue based on x position (0 to 1)
 				float hue = (float) x / width;
 				Color color = Color.HSVToRGB(hue, 1f, 1f);
-
-				// Set this color for the entire column
-				for (int y = 0; y < height; y++)
-				{
-					texture.SetPixel(x, y, color);
-				}
-			}
-
-			texture.Apply();
-			return texture;
-		}
-
-		/// <summary>
-		/// Generates a horizontal gradient from black to white.
-		/// </summary>
-		/// <param name="width">Width of the texture.</param>
-		/// <param name="height">Height of the texture.</param>
-		/// <returns>A Texture2D with the black to white gradient.</returns>
-		public static Texture2D GenerateBlackToWhiteGradient(int width, int height)
-		{
-			Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-
-			for (int x = 0; x < width; x++)
-			{
-				// Calculate grayscale value based on x position (0 to 1)
-				float value = (float) x / width;
-				Color color = new Color(value, value, value);
 
 				// Set this color for the entire column
 				for (int y = 0; y < height; y++)

@@ -35,7 +35,6 @@ namespace Dodad.XSplitscreen
 
 		public static Plugin Singleton { get; private set; }
         public static AssetBundle Resources { get; private set; }
-        public static System.Action OnOpenMenu;
 		internal static HarmonyLib.Harmony Patcher { get; private set; }
 
         private static HGButton MainMenuTitleButton;
@@ -79,25 +78,6 @@ namespace Dodad.XSplitscreen
 				Log.Print($"{PluginName} {PluginVersion} loaded", Log.ELogChannel.Info);
 			else
 				Log.Print($"{PluginName} {PluginVersion} loaded with {FailedHooks.Count} failed hook(s): {string.Join(", ", FailedHooks)}. Some features will not work.", Log.ELogChannel.Warning);
-
-			/*Log.Init(Logger);
-
-            var assembly = Assembly.GetExecutingAssembly();
-            string bundleKey;
-
-            if (XLibrary.Resources.RegisterBundle(assembly, this, $"DoDad.XSplitScreen.{PluginBundle}", out bundleKey))
-            {
-                Log.LogOutput($"Initializing", Log.LogLevel.Debug);
-                XLibrary.Plugin.InitializePlugin(assembly, this, new XLibrary.Language.TokenConfiguration(PluginTag));
-                Initialize();
-                SceneManager.activeSceneChanged += ActiveSceneChanged;
-                Plugin.bundleKey = bundleKey;
-            }
-            else
-            {
-                Log.LogOutput($"Unable to register asset bundle. Plugin disabled.", Log.LogLevel.Warning);
-                return;
-            }*/
 		}
 
 		public void OnApplicationQuit()
@@ -563,7 +543,6 @@ namespace Dodad.XSplitscreen
 			titleButton.onClick.AddListener(() =>
 			{
 				MainMenuController.instance.SetDesiredMenuScreen(SplitscreenMenuController.Singleton);
-                OnOpenMenu?.Invoke();
 			});
 		}
 
@@ -619,15 +598,6 @@ namespace Dodad.XSplitscreen
 
 		//-----------------------------------------------------------------------------------------------------------
 
-		#region Public Methods
-		/*internal static void RecreateAssignmentScreen()
-        {
-            Destroy(assignmentScreen);
-            CreateInitializationRoutine();
-        }*/
-		#endregion
-
-		//-----------------------------------------------------------------------------------------------------------
 
 		#region Event Handlers
         /// <summary>
@@ -654,37 +624,10 @@ namespace Dodad.XSplitscreen
 
             CreateTitleUI();
 		}
-		/*public static void ActiveSceneChanged(Scene previous, Scene current)
-        {
-            if (current.name.Equals("title"))
-                CreateInitializationRoutine();
-        }*/
 		#endregion
 
 		//-----------------------------------------------------------------------------------------------------------
 
-		#region Coroutines
-		/*internal static IEnumerator WaitToInitializeUI()
-        {
-            while (!XLibrary.Plugin.uiPrefabsReady)
-                yield return null;
-
-            Log.LogOutput($"Initializing UI", Log.LogLevel.Message);
-
-            while (!InitializeTitleButton())
-                yield return null;
-
-            while (!InitializeUI())
-                yield return null;
-
-            //Log.LogOutput($"WaitToInitializeUI complete");
-            initializationCoroutine = null;
-
-            yield return null;
-        }*/
-		#endregion
-
-		//-----------------------------------------------------------------------------------------------------------
 
 		#region Patching
 

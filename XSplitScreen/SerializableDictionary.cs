@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System;
 using UnityEngine;
-using JetBrains.Annotations;
 
 /// <summary>
 /// A serializable multidimensional string dictionary

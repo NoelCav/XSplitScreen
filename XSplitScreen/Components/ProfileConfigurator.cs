@@ -21,11 +21,6 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		private static List<string> _activeProfiles;
 
-		/// <summary>
-		/// Event triggered when a profile is selected.
-		/// </summary>
-		private static Action _onProfileSelect;
-
 		#endregion
 
 		#region Private Fields
@@ -68,11 +63,6 @@ namespace Dodad.XSplitscreen.Components
 		public void OnDestroy()
 		{
 			ReleaseProfile();
-
-			if (_isOpen)
-			{
-				_onProfileSelect -= OnProfileSelected;
-			}
 		}
 
 		#endregion
@@ -85,9 +75,6 @@ namespace Dodad.XSplitscreen.Components
 		public void SetMessage(string text, Color color)
 		{
 			Options.SetMessage(text, color);
-			/*_messageTextMesh.text = text;
-			_messageTextMesh.color = color;
-			_messageTextMesh.gameObject.SetActive(text != null);*/
 		}
 
 		public override bool CanOpen() => GetValidProfiles(Options.Slot.Profile?.fileName).Length > 0;
@@ -97,10 +84,7 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		public override void Open()
 		{
-			Log.Print($"ProfileConfigurator.Open: '{transform.parent.parent.name}' subscribing");
-
 			OnProfileSelected();
-			_onProfileSelect += OnProfileSelected;
 
 			_isOpen = true;
 		}
@@ -113,9 +97,6 @@ namespace Dodad.XSplitscreen.Components
 			if (_isOpen)
 			{
 				OnConfirm();
-				/*_onProfileSelect -= OnProfileSelected;
-				_isOpen = false;
-				SetMessage(null, Color.white);*/
 			}
 		}
 
@@ -190,9 +171,7 @@ namespace Dodad.XSplitscreen.Components
 				Options.Slot.Profile = PlatformSystems.saveSystem.GetProfile(profileName);
 			}
 
-			Log.Print($"ProfileConfigurator.SelectProfile: '{transform.parent.parent.name}' unsubscribing, profile = '{profileName}'");
-
-			_onProfileSelect -= OnProfileSelected;
+			Log.Print($"ProfileConfigurator.SelectProfile: '{transform.parent.parent.name}' profile = '{profileName}'");
 
 			_isOpen = false;
 
@@ -260,15 +239,7 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		public override void ConfiguratorUpdate()
 		{
-			/*if (Options.Slot.Input.Up)
-			{
-				OnNavigate(-1);
-			}
-			else if (Options.Slot.Input.Down)
-			{
-				OnNavigate(1);
-			}
-			else */if (Options.Slot.Input.South)
+			if (Options.Slot.Input.South)
 			{
 				OnConfirm();
 			}

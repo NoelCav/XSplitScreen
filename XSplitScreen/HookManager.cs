@@ -44,8 +44,6 @@ namespace Dodad.XSplitscreen
 			RoR2.Networking.NetworkManagerSystem.SvMaxPlayersConVar.instance.SetString(playerCount.ToString());
 		}
 
-		private static MethodInfo RunCameraManager_Udpate_Orig;
-		private static MethodInfo RunCameraManager_Udpate_Patch;
 		private static void UpdateRunCameraManager(bool isSplitscreenEnabled)
 		{
 			try
@@ -63,17 +61,6 @@ namespace Dodad.XSplitscreen
 			{
 				Log.Print($"Could not {(isSplitscreenEnabled ? "hook" : "unhook")} 'RunCameraManager.Update': {e.Message}", ELogChannel.Error);
 			}
-		}
-
-		public static void LogInputPlayerName(string name)
-		{
-			/*if (name == "PlayerMain" ||
-				name == "Player2" ||
-				name == "Player3" ||
-				name == "Player4")
-				return;*/
-
-			Log.Print($"HookManager::LogInputPlayerName: '{name}'");
 		}
 
 		private static void RunCameraManager_Update_IL(ILContext il)
@@ -171,38 +158,6 @@ namespace Dodad.XSplitscreen
 				Log.Print($"Could not hook '{il.Method.Name}'", ELogChannel.Error);
 			}
 		}
-
-		/*		private static void RunCameraManager_Update_IL(ILContext il)
-				{
-					ILCursor c = new ILCursor(il);
-
-					if (c.TryGotoNext(
-							x => x.MatchLdloc(16),
-							x => x.MatchCallvirt<RoR2.LocalUser>("get_inputPlayer"),
-							x => x.MatchCallvirt<Rewired.Player>("get_name"),
-							x => x.MatchLdstr("PlayerMain"),
-							x => x.MatchCall<string>("op_Equality")
-						))
-					{
-						c.Index += 3;
-
-						MethodInfo logMethod = typeof(HookManager).GetMethod(nameof(LogInputPlayerName), BindingFlags.Public | BindingFlags.Static);
-
-						if (logMethod == null)
-						{
-							Log.Print("RunCameraManager_Update_IL: failed to find LogInputPlayerName method", ELogChannel.Error);
-
-							return;
-						}
-
-						c.Emit(OpCodes.Dup);
-						c.Emit(OpCodes.Call, logMethod);
-					}
-					else
-					{
-						Log.Print($"Could not hook '{il.Method.Name}'", ELogChannel.Error);
-					}
-				}*/
 
 		private static RoR2.UI.ChatBox ChatInstance;
 		private static MethodInfo ChatBox_Update_Orig;

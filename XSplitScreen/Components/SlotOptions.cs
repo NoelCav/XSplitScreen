@@ -6,7 +6,6 @@ using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using static RoR2.MasterSpawnSlotController;
 
 namespace Dodad.XSplitscreen.Components
 {
