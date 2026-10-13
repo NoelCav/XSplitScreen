@@ -50,6 +50,8 @@ namespace Dodad.XSplitscreen
 			{ RewiredConsts.Action.UISubmit, "UISubmit" },
 			{ RewiredConsts.Action.UICancel, "UICancel" },
 			{ RewiredConsts.Action.UILMB, "UILMB" },
+			{ RewiredConsts.Action.UICursorX, "UICursorX" },
+			{ RewiredConsts.Action.UICursorY, "UICursorY" },
 		};
 
 		private static bool subscribedToControllerEvents;
