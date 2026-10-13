@@ -95,6 +95,10 @@ namespace Dodad.XSplitscreen
 				prefix: self.GetMethod(nameof(PickupPickerController_OnDisplayEnd_Prefix), selfFlags));
 			Plugin.TryPatch(typeof(NetworkUIPromptController).GetMethod(nameof(NetworkUIPromptController.SetParticipantMaster), flags),
 				prefix: self.GetMethod(nameof(NetworkUIPromptController_SetParticipantMaster_Prefix), selfFlags));
+
+			// Slow second cursor: how often each gamepad cursor updates and what slows it
+			Plugin.TryPatch(typeof(MPInput).GetMethod("Update", flags),
+				postfix: self.GetMethod(nameof(MPInput_Update_Postfix), selfFlags));
 		}
 
 		/// <summary>
@@ -330,6 +334,68 @@ namespace Dodad.XSplitscreen
 				return;
 
 			Log.Diag($"Prompt '{__instance.name}' participant cleared (server). Buttons pressed this frame: {GetPressedButtons()}{GetCaller()}");
+		}
+
+		private class CursorSample
+		{
+			public int LastFrame;
+			public int Updates;
+			public int SkippedFrames;
+			public int HoverFrames;
+			public float Distance;
+			public float StickTotal;
+			public float NextReport;
+		}
+
+		private static readonly Dictionary<MPInput, CursorSample> cursorSamples = new Dictionary<MPInput, CursorSample>();
+
+		/// <summary>
+		/// Once a second, for each gamepad cursor that is being moved, report how many frames it updated on,
+		/// how far it moved and how often the hover slowdown applied
+		/// </summary>
+		private static void MPInput_Update_Postfix(MPInput __instance)
+		{
+			if (__instance.eventSystem == null || !__instance.eventSystem.isCursorVisible ||
+				__instance.eventSystem.currentInputSource != MPEventSystem.InputSource.Gamepad)
+				return;
+
+			if (!cursorSamples.TryGetValue(__instance, out var sample))
+			{
+				sample = new CursorSample { LastFrame = Time.frameCount, NextReport = Time.unscaledTime + 1f };
+				cursorSamples[__instance] = sample;
+			}
+
+			if (sample.LastFrame > 0 && Time.frameCount - sample.LastFrame > 1)
+				sample.SkippedFrames += Time.frameCount - sample.LastFrame - 1;
+
+			sample.LastFrame = Time.frameCount;
+			sample.Updates++;
+			sample.Distance += __instance.screenPositionDelta.magnitude;
+			sample.StickTotal += new Vector2(__instance.player.GetAxis(RewiredConsts.Action.UICursorX), __instance.player.GetAxis(RewiredConsts.Action.UICursorY)).magnitude;
+
+			if (__instance.eventSystem.isHovering)
+				sample.HoverFrames++;
+
+			if (Time.unscaledTime < sample.NextReport)
+				return;
+
+			if (sample.StickTotal > 0f)
+			{
+				Log.Diag($"Cursor {__instance.player.name}: {sample.Updates} updates, {sample.SkippedFrames} skipped frames, " +
+					$"avg stick {sample.StickTotal / sample.Updates:0.00}, moved {sample.Distance:0}px, hovering {sample.HoverFrames}/{sample.Updates} frames, " +
+					$"cursor pos {__instance.internalMousePosition}, other cursors moving: {GetMovingCursors(__instance)}");
+			}
+
+			sample.Updates = sample.SkippedFrames = sample.HoverFrames = 0;
+			sample.Distance = sample.StickTotal = 0f;
+			sample.NextReport = Time.unscaledTime + 1f;
+		}
+
+		private static string GetMovingCursors(MPInput except)
+		{
+			var moving = cursorSamples.Where(x => x.Key != null && x.Key != except && x.Value.StickTotal > 0f).Select(x => x.Key.player.name).ToList();
+
+			return moving.Count == 0 ? "none" : string.Join(", ", moving);
 		}
 
 		#endregion
