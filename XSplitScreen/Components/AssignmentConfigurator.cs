@@ -326,6 +326,15 @@ namespace Dodad.XSplitscreen.Components
 					return;
 				}
 
+				// (specter) A null profile means none was left to assign - letting it through would
+				// hand the slot RoR2's Guest-profile fallback, which can corrupt on next load.
+				if (Options.Slot.Profile == null)
+				{
+					_claim = null;
+					Options.SetMessage("XSS_NEED_PROFILE", Color.red);
+					return;
+				}
+
 				_claim.Claim(this);
 
 				if (_showCursor)
