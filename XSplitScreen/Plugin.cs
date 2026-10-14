@@ -198,7 +198,8 @@ namespace Dodad.XSplitscreen
 				{ "XSS_SELECT_SCREEN", "Select Screen" },
 				{ "XSS_READY", "Ready" },
 				{ "XSS_ONLINE", "Online" },
-				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session." },
+				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session. <br><br>If you don't have a separate profile for every player, create them from the main menu BEFORE setting up splitscreen - claiming a screen without one can leave a corrupted profile behind." },
+				{ "XSS_NEED_PROFILE", "Create a profile from the main menu first" },
 				{ "XSS_CREDITS", "Credits" },
 				{ "XSS_CREDITS_HOVER", "Enable or disable credits" },
 				{ "XSS_SELECT_MONITOR", "Select Monitor" },
@@ -220,7 +221,8 @@ namespace Dodad.XSplitscreen
 				{ "XSS_SELECT_SCREEN", "Select Screen" },
 				{ "XSS_READY", "Ready" },
 				{ "XSS_ONLINE", "Online" },
-				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session." },
+				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session. <br><br>If you don't have a separate profile for every player, create them from the main menu BEFORE setting up splitscreen - claiming a screen without one can leave a corrupted profile behind." },
+				{ "XSS_NEED_PROFILE", "Create a profile from the main menu first" },
 				{ "XSS_CREDITS", "Credits" },
 				{ "XSS_CREDITS_HOVER", "Enable or disable credits" },
 				{ "XSS_SELECT_MONITOR", "Select Monitor" },
@@ -242,7 +244,8 @@ namespace Dodad.XSplitscreen
 				{ "XSS_SELECT_SCREEN", "Select Screen" },
 				{ "XSS_READY", "Ready" },
 				{ "XSS_ONLINE", "Online" },
-				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session." },
+				{ "XSS_WARN", "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session. <br><br>If you don't have a separate profile for every player, create them from the main menu BEFORE setting up splitscreen - claiming a screen without one can leave a corrupted profile behind." },
+				{ "XSS_NEED_PROFILE", "Create a profile from the main menu first" },
 				{ "XSS_CREDITS", "Credits" },
 				{ "XSS_CREDITS_HOVER", "Enable or disable credits" },
 				{ "XSS_SELECT_MONITOR", "Select Monitor" },
@@ -355,10 +358,11 @@ namespace Dodad.XSplitscreen
 		/// <param name="original">Method to patch (may be null if it was not found)</param>
 		/// <param name="prefix"></param>
 		/// <param name="postfix"></param>
+		/// <param name="finalizer"></param>
 		/// <returns>true if the patch was applied</returns>
-		internal static bool TryPatch(MethodBase original, MethodInfo prefix = null, MethodInfo postfix = null)
+		internal static bool TryPatch(MethodBase original, MethodInfo prefix = null, MethodInfo postfix = null, MethodInfo finalizer = null)
 		{
-			string name = original != null ? $"{original.DeclaringType?.Name}.{original.Name}" : (prefix ?? postfix)?.Name ?? "unknown";
+			string name = original != null ? $"{original.DeclaringType?.Name}.{original.Name}" : (prefix ?? postfix ?? finalizer)?.Name ?? "unknown";
 
 			try
 			{
@@ -367,7 +371,8 @@ namespace Dodad.XSplitscreen
 
 				Patcher.Patch(original,
 					prefix: prefix == null ? null : new HarmonyLib.HarmonyMethod(prefix),
-					postfix: postfix == null ? null : new HarmonyLib.HarmonyMethod(postfix));
+					postfix: postfix == null ? null : new HarmonyLib.HarmonyMethod(postfix),
+					finalizer: finalizer == null ? null : new HarmonyLib.HarmonyMethod(finalizer));
 
 				Log.Print($"Hooked '{name}'");
 
@@ -478,6 +483,13 @@ namespace Dodad.XSplitscreen
 
 			TryPatch(lunOriginal, postfix: lunPatch);
 
+			// (specter) Vanilla's ProfileNameLabel shows the machine's single Steam name on every pod -
+			// swap in each local player's profile name.
+			var pnlOriginal = typeof(RoR2.UI.ProfileNameLabel).GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
+			var pnlPatch = typeof(Plugin).GetMethod("ProfileNameLabel_LateUpdate", BindingFlags.Static | BindingFlags.NonPublic);
+
+			TryPatch(pnlOriginal, postfix: pnlPatch);
+
 			// Combat health bar fix
 
 			var chbOriginal = typeof(RoR2.UI.CombatHealthBarViewer).GetMethod("SetLayoutHorizontal", BindingFlags.Instance | BindingFlags.Public);
@@ -496,6 +508,24 @@ namespace Dodad.XSplitscreen
 			var mcPatch = typeof(Plugin).GetMethod("ColorCatalog_GetMultiplayerColor", BindingFlags.Static | BindingFlags.NonPublic);
 
 			TryPatch(mcOriginal, prefix: mcPatch);
+
+			// (specter) Guard against a vanilla camera/entitlement race - see RunCameraManager_Update_Finalizer.
+			var rcmOriginal = typeof(RoR2.RunCameraManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+			var rcmFinalizer = typeof(Plugin).GetMethod("RunCameraManager_Update_Finalizer", BindingFlags.Static | BindingFlags.NonPublic);
+
+			TryPatch(rcmOriginal, finalizer: rcmFinalizer);
+
+			// (specter) Fit the rule grids to each player's viewport - see RuleCategoryController_SetupGridVoteDisplay.
+			var rccOriginal = typeof(RoR2.UI.RuleCategoryController).GetMethod("SetupGridVoteDisplay", BindingFlags.Instance | BindingFlags.NonPublic);
+			var rccPatch = typeof(Plugin).GetMethod("RuleCategoryController_SetupGridVoteDisplay", BindingFlags.Static | BindingFlags.NonPublic);
+
+			TryPatch(rccOriginal, postfix: rccPatch);
+
+			// (specter) Same fix for the crafting panel - see CraftingPanel_Awake.
+			var cpOriginal = typeof(RoR2.UI.CraftingPanel).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+			var cpPatch = typeof(Plugin).GetMethod("CraftingPanel_Awake", BindingFlags.Static | BindingFlags.NonPublic);
+
+			TryPatch(cpOriginal, postfix: cpPatch);
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -614,11 +644,13 @@ namespace Dodad.XSplitscreen
 			Diagnostics.SubscribeToControllerEvents();
 			Diagnostics.ReportControllers("main menu loaded");
 
+			// (specter) Also fires after quitting a run - without this, controllers stay assigned to
+			// splitscreen players and can't navigate the main menu.
+			if (SplitscreenUserManager.IsSplitscreenEnabled)
+				SplitscreenUserManager.DisableSplitscreen();
+
             if (MainMenuTitleButton != null)
                 return;
-
-			//if (SplitscreenUserManager.IsSplitscreenEnabled())
-			//	SplitscreenUserManager.DisableSplitscreen();
 
 			UIHelper.Initialize();
 
@@ -664,6 +696,19 @@ namespace Dodad.XSplitscreen
 			return false;
 		}
 
+		// (specter) Vanilla indexes its camera dictionary before every local player has a camera
+		// (entitlement race) - swallow that KeyNotFoundException and let the next frame retry.
+		private static Exception RunCameraManager_Update_Finalizer(Exception __exception)
+		{
+			if (__exception is System.Collections.Generic.KeyNotFoundException)
+			{
+				Log.Print("RunCameraManager.Update threw KeyNotFoundException (vanilla local-multiplayer camera/entitlement race) - suppressed, retrying next frame.", Log.ELogChannel.Warning);
+				return null;
+			}
+
+			return __exception;
+		}
+
 		private static bool CombatHealthBarViewer_SetLayoutHorizontal(RoR2.UI.CombatHealthBarViewer __instance)
 		{
 			if (__instance.uiCamera)
@@ -687,18 +732,32 @@ namespace Dodad.XSplitscreen
 
 		private static void ApplyLocalProfileName(RoR2.NetworkUser networkUser, int framesLeft)
 		{
-			if (!networkUser || !networkUser.isLocalPlayer || !SplitscreenUserManager.IsSplitscreenEnabled)
+			if (!networkUser || !SplitscreenUserManager.IsSplitscreenEnabled)
 				return;
 
-			if (networkUser.localUser?.userProfile != null)
+			if (networkUser.isLocalPlayer && networkUser.localUser?.userProfile != null)
 			{
 				networkUser.userName = networkUser.localUser.userProfile.name;
 			}
 			else if (framesLeft > 0)
 			{
-				// The local user is linked shortly after the network user spawns
+				// (specter) isLocalPlayer and localUser both link a few frames after the network user spawns
 				ExecuteNextFrame.Invoke(() => ApplyLocalProfileName(networkUser, framesLeft - 1));
 			}
+		}
+
+		private static void ProfileNameLabel_LateUpdate(RoR2.UI.ProfileNameLabel __instance)
+		{
+			var locator = __instance.GetComponent<MPEventSystemLocator>();
+			var localUser = locator?.eventSystem?.localUser;
+
+			if (localUser?.userProfile == null)
+				return;
+
+			var label = __instance.GetComponent<TMPro.TextMeshProUGUI>();
+			var token = __instance.token;
+
+			label.text = RoR2.Language.GetStringFormatted(token, localUser.userProfile.name);
 		}
 
 		private static void CharacterSelectController_Awake(RoR2.UI.CharacterSelectController __instance)
@@ -710,6 +769,83 @@ namespace Dodad.XSplitscreen
 					Destroy(__instance.gameObject);
 				}
 			}));
+		}
+
+		private static readonly FieldInfo RuleCategoryPopoutInstanceField =
+			typeof(RoR2.UI.RuleCategoryController).GetField("popoutPanelInstance", BindingFlags.Instance | BindingFlags.NonPublic);
+
+		// (specter) Several per-player RoR2 UI panels (the Difficulty/Expansions/Artifacts/Karma
+		// rule grids, the crafting panel) are sized for a full window with no viewport check at
+		// all - scale them down as whole units to fit this player's actual splitscreen viewport.
+		private const float SidebarGridWidthFrac = 0.9f;
+		private const float SidebarGridHeightFrac = 0.22f;
+		private const float FloatingPanelWidthFrac = 0.95f;
+		private const float FloatingPanelHeightFrac = 0.9f;
+
+		private static bool TryGetLocalPlayerViewport(Component component, out float viewportWidth, out float viewportHeight)
+		{
+			viewportWidth = 0f;
+			viewportHeight = 0f;
+
+			if (!SplitscreenUserManager.IsSplitscreenEnabled)
+				return false;
+
+			var locator = component.GetComponent<MPEventSystemLocator>();
+			var profile = locator?.eventSystem?.localUser?.userProfile;
+
+			if (profile?.fileName == null)
+				return false;
+
+			foreach (var user in SplitscreenUserManager.LocalUsers)
+			{
+				if (user.Profile?.fileName == profile.fileName)
+				{
+					viewportWidth = user.CameraRect.width * Screen.width;
+					viewportHeight = user.CameraRect.height * Screen.height;
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static void RuleCategoryController_SetupGridVoteDisplay(RoR2.UI.RuleCategoryController __instance)
+		{
+			if (!TryGetLocalPlayerViewport(__instance, out float viewportWidth, out float viewportHeight))
+				return;
+
+			ScaleToFitViewport(__instance.voteResultGridContainer, viewportWidth * SidebarGridWidthFrac, viewportHeight * SidebarGridHeightFrac);
+
+			var popoutPanelInstance = RuleCategoryPopoutInstanceField?.GetValue(__instance) as HGPopoutPanel;
+			ScaleToFitViewport(popoutPanelInstance?.transform as RectTransform, viewportWidth * FloatingPanelWidthFrac, viewportHeight * FloatingPanelHeightFrac);
+		}
+
+		// (specter) CraftingPanel.Awake sets GridLayoutGroup.constraintCount straight off
+		// slotCount with no viewport check, the same unbounded-grid shape as the rule panels above.
+		private static void CraftingPanel_Awake(RoR2.UI.CraftingPanel __instance)
+		{
+			if (!TryGetLocalPlayerViewport(__instance, out float viewportWidth, out float viewportHeight))
+				return;
+
+			ScaleToFitViewport(__instance.transform as RectTransform, viewportWidth * FloatingPanelWidthFrac, viewportHeight * FloatingPanelHeightFrac);
+		}
+
+		private static void ScaleToFitViewport(RectTransform target, float maxWidth, float maxHeight)
+		{
+			if (target == null)
+				return;
+
+			float width = target.rect.width;
+			float height = target.rect.height;
+
+			if (width <= 0 || height <= 0)
+				return;
+
+			const float minScale = 0.5f; // floor so content doesn't shrink past legibility
+
+			float scale = Mathf.Max(minScale, Mathf.Min(1f, Mathf.Min(maxWidth / width, maxHeight / height)));
+
+			target.localScale = Vector3.one * scale;
 		}
 
 		/// <summary>
@@ -731,8 +867,13 @@ namespace Dodad.XSplitscreen
 		/// <param name="__instance"></param>
 		private static void RewiredClonePlayers(InputManager_Base __instance)
 		{
+			// (specter) Assumes Rewired starts with exactly PlayerMain/Player2/Player3 - log loudly if not,
+			// since bailing here silently disables the whole mod.
             if (__instance.userData.players.Count != 3)
+            {
+				Log.Print($"RewiredClonePlayers: expected exactly 3 default Rewired players, found {__instance.userData.players.Count} - skipping player cloning. Splitscreen beyond 1 player will not work.", Log.ELogChannel.Error);
                 return;
+            }
 
             var player = __instance.userData.players[2].Clone();
 
@@ -754,11 +895,14 @@ namespace Dodad.XSplitscreen
 		/// <param name="__instance"></param>
 		private static void RoR2AppResizePlayers(RoR2.RoR2Application __instance)
 		{
-			RoR2.RoR2Application.maxPlayers = HardMaxPlayers;
-			RoR2.RoR2Application.hardMaxPlayers = HardMaxPlayers;
-			RoR2.RoR2Application.maxLocalPlayers = HardMaxPlayers;
+			// (specter) readonly in the live game assembly (not in this GameLibs stub) - reflection
+			// SetValue bypasses that regardless.
+			var appType = typeof(RoR2.RoR2Application);
+			appType.GetField("maxPlayers", BindingFlags.Static | BindingFlags.Public).SetValue(null, HardMaxPlayers);
+			appType.GetField("hardMaxPlayers", BindingFlags.Static | BindingFlags.Public).SetValue(null, HardMaxPlayers);
+			appType.GetField("maxLocalPlayers", BindingFlags.Static | BindingFlags.Public).SetValue(null, HardMaxPlayers);
 
-			Patcher.Unpatch(typeof(RoR2.RoR2Application).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic),
+			TryUnpatch(typeof(RoR2.RoR2Application).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic),
 				typeof(Plugin).GetMethod("RoR2AppResizePlayers", BindingFlags.Static | BindingFlags.NonPublic));
 		}
 

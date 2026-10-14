@@ -181,7 +181,7 @@ namespace Dodad.XSplitscreen.Components
 		/// <summary>
 		/// Releases the current profile from the active list.
 		/// </summary>
-		private void ReleaseProfile()
+		internal void ReleaseProfile()
 		{
 			if (Options.Slot.Profile != null)
 				_activeProfiles.Remove(Options.Slot.Profile.fileName);

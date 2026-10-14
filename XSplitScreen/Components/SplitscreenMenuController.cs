@@ -175,8 +175,9 @@ namespace Dodad.XSplitscreen.Components
 				notificationGroup.alpha = Mathf.MoveTowards(notificationGroup.alpha, groupAlphaTarget, Time.unscaledDeltaTime * 10f);
 			else
 			{
+				// (specter) Hidden instead of destroyed, so OnEnter can show it again next visit.
 				if(notificationGroup.alpha < 1)
-					Destroy(notificationGroup.gameObject);
+					notificationGroup.gameObject.SetActive(false);
 			}
 		}
 
@@ -227,6 +228,13 @@ namespace Dodad.XSplitscreen.Components
 			int displayCount = Display.displays.Length;
 			if (displayCount == 1) return;
 
+			// (specter) No camera rig exists outside a run.
+			if (CameraRigController.instancesList.Count == 0)
+			{
+				Log.Print("EnableMultiMonitorMode: no active CameraRigController to clone from yet, skipping", Log.ELogChannel.Warning);
+				return;
+			}
+
 			var mainCamera = CameraRigController.instancesList.First();
 
 			for (int i = 1; i < displayCount; i++)
@@ -265,6 +273,19 @@ namespace Dodad.XSplitscreen.Components
 
 			if (!hasInitialized)
 				CreateUI();
+			else if (monitorId == 0)
+			{
+				// (specter) The warning's static defaults only apply once per process - reset them
+				// so it shows on every visit.
+				ShowBackupWarning = true;
+				BackupWarningTimer = 20f;
+				LocalUserPanel.AllowChanges = false;
+				if (notificationGroup != null)
+				{
+					notificationGroup.alpha = 1f;
+					notificationGroup.gameObject.SetActive(true);
+				}
+			}
 
 			if (monitorId != 0)
 			{
@@ -301,9 +322,23 @@ namespace Dodad.XSplitscreen.Components
 			if (myMainMenuController == mainMenuController)
 				myMainMenuController = null;
 
+			ReleaseAllControllersToMain();
+
 			onExit.Invoke();
 
 			SplitScreenSettings.BatchSaveDirtyUsers();
+		}
+
+		// (specter) The main menu only reads PlayerMain, so give back every slot's controllers on exit.
+		private static void ReleaseAllControllersToMain()
+		{
+			if (LocalUserSlot.Instances == null) return;
+
+			foreach (var slot in LocalUserSlot.Instances.ToList())
+			{
+				if (slot != null && slot.LocalPlayer != null && slot.Panel != null)
+					slot.Panel.TryRemovePlayerFromSlot(slot.LocalPlayer, slot);
+			}
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -452,6 +487,9 @@ namespace Dodad.XSplitscreen.Components
 			gameModeButton.transform.SetSiblingIndex(0);
 			gameModeButton.name = "GameMode";
 			gameModeButton.hoverToken = "XSS_OPTION_GM_HOVER";
+			// (specter) Cloned from the multiplayer menu, whose layer isn't on top here - MPEventSystem
+			// drops selection of any button whose requiredTopLayer isn't the top layer.
+			gameModeButton.requiredTopLayer = null;
 
 			gameModePicker = gameModeButton.GetComponent<CarouselController>();
 			BuildGameModeChoices();
@@ -566,7 +604,11 @@ namespace Dodad.XSplitscreen.Components
 			if (ShowBackupWarning)
 			{
 				var warningText = UIHelper.GetPrefab(UIHelper.EUIPrefabIndex.SimpleText);
-				warningText.GetComponentInChildren<LanguageTextMeshController>().token = "XSS_WARN";
+				// (specter) Hardcoded so an updated warning isn't masked by a stale language.json.
+				// The controller is disabled before its textMeshPro field is set, so use TMP directly.
+				var warningTmp = warningText.GetComponentInChildren<TMPro.TMP_Text>();
+				warningText.GetComponentInChildren<LanguageTextMeshController>().enabled = false;
+				warningTmp.text = "Multiple instances of corrupted profiles and lost save data have been reported from users playing in the official local splitscreen mode on consoles. <br><br>XSplitscreen makes no guarantee concerning the safety of your profiles. It is HIGHLY RECOMMENDED to create backups before each session. <br><br>If you don't have a separate profile for every player, create them from the main menu BEFORE setting up splitscreen - claiming a screen without one can leave a corrupted profile behind.";
 				var warnLayout = warningText.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
 				var warnRect = warningText.gameObject.GetComponent<RectTransform>();
 				warnRect.anchorMax = new Vector2(0.8f, 1f);
@@ -585,7 +627,7 @@ namespace Dodad.XSplitscreen.Components
 			}
 			else
 			{
-				Destroy(notificationGroup.gameObject);
+				notificationGroup.gameObject.SetActive(false);
 			}
 
 			// Credits

@@ -41,12 +41,29 @@ namespace Dodad.XSplitscreen.Components
 			_maxY = transform.parent.GetComponent<RectTransform>().rect.height / 2f;
 		}
 
+		// (specter) Any player can close the credits - a non-host controller could open them but
+		// never close them when only MainInput was checked.
+		private static bool AnyCloseInputPressed()
+		{
+			if (SplitscreenMenuController.MainInput != null &&
+				(SplitscreenMenuController.MainInput.MouseLeft || SplitscreenMenuController.MainInput.East || SplitscreenMenuController.MainInput.South))
+				return true;
+
+			if (LocalUserSlot.Instances != null)
+			{
+				foreach (var slot in LocalUserSlot.Instances)
+				{
+					if (slot != null && slot.Input != null && (slot.Input.East || slot.Input.South))
+						return true;
+				}
+			}
+
+			return false;
+		}
+
 		private void Update()
 		{
-			if (SplitscreenMenuController.MainInput == null)
-				return;
-
-			if (SplitscreenMenuController.MainInput.MouseLeft || SplitscreenMenuController.MainInput.East || SplitscreenMenuController.MainInput.South)
+			if (ShowCredits && AnyCloseInputPressed())
 				ShowCredits = false;
 
 			if (ShowCredits)

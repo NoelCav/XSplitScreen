@@ -23,6 +23,16 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		internal static List<LocalUserSlot> Instances { get; private set; }
 
+		// (specter) Which slot each controller last belonged to, for routing reconnects.
+		private static readonly Dictionary<int, LocalUserSlot> _lastSlotForController = new();
+
+		internal static LocalUserSlot GetLastSlotForController(int controllerId)
+		{
+			return _lastSlotForController.TryGetValue(controllerId, out var slot) && Instances != null && Instances.Contains(slot)
+				? slot
+				: null;
+		}
+
 		/// <summary>
 		/// Dictionary mapping device types to UI icons.
 		/// </summary>
@@ -44,6 +54,14 @@ namespace Dodad.XSplitscreen.Components
 		#region Public Properties
 
 		public UnityEngine.Rect ScreenRect => _options.GetConfigurator<AssignmentConfigurator>()?.Rect ?? new(0, 0, 1, 1);
+
+		// (specter) The slot outlives its player, so release the profile/color on removal or the
+		// next occupant inherits them.
+		internal void ReleaseProfile()
+		{
+			_options?.GetConfigurator<ProfileConfigurator>()?.ReleaseProfile();
+			MainColor = Color.white;
+		}
 
 		/// <summary>
 		/// The Rewired Player assigned to this slot. Setting this updates associated systems.
@@ -607,6 +625,9 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		public void OnControllerRemoved(ControllerAssignmentChangedEventArgs args)
 		{
+			if (args.controller != null)
+				_lastSlotForController[args.controller.id] = this;
+
 			ResolveDeviceIcon();
 		}
 

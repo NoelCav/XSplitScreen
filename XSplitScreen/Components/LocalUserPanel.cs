@@ -52,16 +52,13 @@ namespace Dodad.XSplitscreen.Components
 				var currentPlayer = playerList[e];
 				var slot = FindSlotByPlayer(currentPlayer);
 
-				var controller = currentPlayer.controllers.GetLastActiveController();
-
-				if (LocalUserSlot.GetDeviceKeyFromController(controller) == "keyboard")
-					continue;
-
 				if (currentPlayer.name == "PlayerMain")
 				{
 					if (slot != null)
 						continue;
 
+					// (specter) Unclaimed controllers sit on PlayerMain alongside keyboard+mouse;
+					// TryAddPlayerToSlot claims whichever device actually pressed join.
 					if (currentPlayer.GetButtonDown(11))
 						TryAddPlayerToSlot(currentPlayer);
 				}
@@ -117,6 +114,7 @@ namespace Dodad.XSplitscreen.Components
 			foreach (var controller in controllers)
 				main.controllers.AddController(controller, true);
 
+			slot.ReleaseProfile();
 			slot.LocalPlayer = null;
 			currentPlayer.SetVibration(0, 0, true);
 		}
@@ -308,7 +306,7 @@ namespace Dodad.XSplitscreen.Components
 		//-----------------------------------------------------------------------------------------------------------
 
 		/// <summary>
-		/// DEBUG: Resets controller changes
+		/// Unsubscribes from controller-connect events while the menu is closed.
 		/// </summary>
 		private void OnExit()
 		{
@@ -327,6 +325,17 @@ namespace Dodad.XSplitscreen.Components
 		/// <param name="args"></param>
 		public void OnControllerAddedEvent(ControllerStatusChangedEventArgs args)
 		{
+			// (specter) Send a reconnecting controller back to its previous slot, so two empty
+			// slots don't race for it.
+			var previousSlot = LocalUserSlot.GetLastSlotForController(args.controllerId);
+
+			if (previousSlot?.LocalPlayer != null && previousSlot.LocalPlayer.controllers.Controllers.Count() == 0)
+			{
+				previousSlot.LocalPlayer.controllers.AddController(args.controller, false);
+
+				return;
+			}
+
 			foreach(var slot in LocalUserSlot.Instances)
 			{
 				if (slot.LocalPlayer != null &&
