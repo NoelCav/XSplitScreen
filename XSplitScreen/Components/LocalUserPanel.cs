@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace Dodad.XSplitscreen.Components
 {
@@ -26,10 +27,19 @@ namespace Dodad.XSplitscreen.Components
 		public SplitscreenMenuController Controller => _controller;
 		internal LocalUserSlot[] UserSlots => userContainer.GetComponentsInChildren<LocalUserSlot>();
 
-		internal int FilledSlots => userContainer.childCount;
+		// (specter) Content's own direct children are now the 2 column containers instead of
+		// slots (see Initialize()), so this counts actual LocalUserSlot components.
+		internal int FilledSlots => UserSlots.Length;
 
 		private GameObject userPrefab;
 		private Transform userContainer;
+
+		/// <summary>
+		/// (specter) The 2 side-by-side columns slots are actually parented into - see the setup
+		/// in Initialize(). userContainer (Content) itself only holds these two.
+		/// </summary>
+		private Transform _columnLeft;
+		private Transform _columnRight;
 
 		internal int MonitorId { get; private set; }
 
@@ -38,8 +48,30 @@ namespace Dodad.XSplitscreen.Components
 		//-----------------------------------------------------------------------------------------------------------
 
 		/// <summary>
-		/// Handle adding and removing users to slots when pressing start or back
+		/// (specter) Drives the 2-column layout by hand every frame - see the layout removal
+		/// comment near CreateColumn for why no LayoutGroup is involved here.
 		/// </summary>
+		public void LateUpdate()
+		{
+			if (userContainer == null || _columnLeft == null || _columnRight == null) return;
+
+			const float halfGap = 4f; // (specter) half of an 8px gap between the columns
+
+			var contentRect = (RectTransform) userContainer;
+			var leftRect = (RectTransform) _columnLeft;
+			var rightRect = (RectTransform) _columnRight;
+
+			float columnWidth = Mathf.Max(0f, contentRect.rect.width / 2f - halfGap);
+
+			leftRect.anchoredPosition = new Vector2(0f, 0f);
+			leftRect.sizeDelta = new Vector2(columnWidth, leftRect.sizeDelta.y);
+
+			rightRect.anchoredPosition = new Vector2(columnWidth + halfGap * 2f, 0f);
+			rightRect.sizeDelta = new Vector2(columnWidth, rightRect.sizeDelta.y);
+
+			contentRect.sizeDelta = new Vector2(contentRect.sizeDelta.x, Mathf.Max(leftRect.rect.height, rightRect.rect.height));
+		}
+
 		public void Update()
 		{
 			if (!AllowChanges || MonitorId != 0)
@@ -57,8 +89,10 @@ namespace Dodad.XSplitscreen.Components
 					if (slot != null)
 						continue;
 
-					// (specter) Unclaimed controllers sit on PlayerMain alongside keyboard+mouse;
-					// TryAddPlayerToSlot claims whichever device actually pressed join.
+					// (specter) Before a controller is claimed into a slot, Rewired still has it
+					// attached to PlayerMain alongside keyboard+mouse. TryAddPlayerToSlot below grabs
+					// the actual triggering device instead of "PlayerMain" itself, so any of them
+					// joining here is safe.
 					if (currentPlayer.GetButtonDown(11))
 						TryAddPlayerToSlot(currentPlayer);
 				}
@@ -88,7 +122,7 @@ namespace Dodad.XSplitscreen.Components
 
 				Log.Print($"LocalUserPanel.TryAddControllersToSlot: '{panel.name}' adding new player '{freePlayer.name}', slot '{freeSlot.name}' (existing slot is null)");
 
-				foreach(var controller in controllers)
+				foreach (var controller in controllers)
 					freePlayer.controllers.AddController(controller, !(controller is Keyboard || controller is Mouse));
 
 				freeSlot.LocalPlayer = freePlayer;
@@ -139,8 +173,8 @@ namespace Dodad.XSplitscreen.Components
 			if (freeSlot == null)
 				return false;
 
-			slot.transform.SetParent(userContainer);
-			//slot.transform.localScale = Vector3.one;
+			// (specter) Into one of the 2 columns instead of Content directly - see Initialize().
+			slot.transform.SetParent(GetTargetColumn());
 
 			if (transform.childCount == MAX_USERS)
 				Destroy(freeSlot.gameObject);
@@ -184,7 +218,29 @@ namespace Dodad.XSplitscreen.Components
 					juice.TransitionPanFromLeft();
 				});
 
-				userContainer = transform.Find("Slots");
+				// (specter) The visible list scrolls (see menu.prefab's Slots/Viewport/Content), so
+				// slots are parented into Content instead of the ScrollRect root itself.
+				userContainer = transform.Find("Slots/Viewport/Content");
+
+				// (specter) No LayoutGroup holds the 2 columns at a fixed cross-axis offset, so
+				// Content's baked VerticalLayoutGroup + ContentSizeFitter are removed; columns anchor
+				// directly to Content's corners instead (CreateColumn), sized by hand in LateUpdate.
+				// Uses DestroyImmediate instead of Destroy, since Destroy() leaves the component
+				// present until end of frame, and a GameObject can only carry one LayoutGroup at a time.
+				var oldLayout = userContainer.GetComponent<VerticalLayoutGroup>();
+				if (oldLayout != null)
+					UnityEngine.Object.DestroyImmediate(oldLayout);
+				var oldFitter = userContainer.GetComponent<ContentSizeFitter>();
+				if (oldFitter != null)
+					UnityEngine.Object.DestroyImmediate(oldFitter);
+
+				_columnLeft = userContainer.Find("ColumnLeft");
+				_columnRight = userContainer.Find("ColumnRight");
+				if (_columnLeft == null || _columnRight == null)
+				{
+					_columnLeft = CreateColumn(userContainer, "ColumnLeft");
+					_columnRight = CreateColumn(userContainer, "ColumnRight");
+				}
 
 				userPrefab ??= Plugin.Resources.LoadAsset<GameObject>("UserSlot.prefab");
 
@@ -194,7 +250,7 @@ namespace Dodad.XSplitscreen.Components
 				SplitscreenMenuController.Singleton.onEnter.AddListener(OnEnter);
 				SplitscreenMenuController.Singleton.onExit.AddListener(OnExit);
 			}
-			catch(Exception e)
+			catch (Exception e)
 			{
 				Log.Print(e, Log.ELogChannel.Fatal);
 
@@ -207,32 +263,65 @@ namespace Dodad.XSplitscreen.Components
 		/// <summary>
 		/// Add a new slot tracker
 		/// </summary>
-		/// <returns></returns>
 		internal void AddSlot()
 		{
-			//Log.Print($"[{this.GetType().Name}.{MethodBase.GetCurrentMethod().Name}]");
-
-			var newSlot = GameObject.Instantiate(userPrefab, userContainer);
+			var newSlot = GameObject.Instantiate(userPrefab, GetTargetColumn());
 
 			newSlot.gameObject.AddComponent<LocalUserSlot>();
 
 			newSlot.gameObject.SetActive(true);
 		}
 
+		/// <summary>
+		/// (specter) Whichever of the 2 columns currently has fewer slots in it.
+		/// </summary>
+		private Transform GetTargetColumn() => _columnLeft.childCount <= _columnRight.childCount ? _columnLeft : _columnRight;
+
+		/// <summary>
+		/// (specter) Builds one of the 2 side-by-side columns. Anchored as a plain top-left point
+		/// (not stretched, no parent LayoutGroup) - LateUpdate drives its position/size by hand.
+		/// Internally still a plain VerticalLayoutGroup + ContentSizeFitter, same as Content's old
+		/// single-column setup.
+		/// </summary>
+		private static Transform CreateColumn(Transform parent, string name)
+		{
+			var go = new GameObject(name, typeof(RectTransform));
+			go.transform.SetParent(parent, false);
+
+			var rt = (RectTransform) go.transform;
+			rt.anchorMin = new Vector2(0f, 1f);
+			rt.anchorMax = new Vector2(0f, 1f);
+			rt.pivot = new Vector2(0f, 1f);
+
+			var vertical = go.AddComponent<VerticalLayoutGroup>();
+			vertical.padding = new RectOffset(0, 0, 0, 0);
+			vertical.spacing = 2;
+			vertical.childAlignment = TextAnchor.UpperCenter;
+			vertical.childForceExpandWidth = true;
+			vertical.childForceExpandHeight = false;
+			vertical.childControlWidth = true;
+			vertical.childControlHeight = true;
+
+			var fitter = go.AddComponent<ContentSizeFitter>();
+			fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+			return go.transform;
+		}
+
 		//-----------------------------------------------------------------------------------------------------------
 
 		internal LocalUserSlot GetFreeSlot()
 		{
-			foreach (var instance in LocalUserSlot.Instances)
-			{
-				if (instance.transform.parent != userContainer)
-					continue;
-
-				if (instance.LocalPlayer == null)
-					return instance;
-			}
-
-			return null;
+			// (specter) LocalUserSlot.Instances is ordered by creation instead of on-screen position,
+			// so picking the first free one in that order could land a new player in the right
+			// column while a slot higher up the left column sits empty (e.g. right after someone
+			// leaves). This sorts by actual reading order instead (left column top-to-bottom, then right).
+			return LocalUserSlot.Instances
+				.Where(instance => instance.LocalPlayer == null &&
+					(instance.transform.parent == _columnLeft || instance.transform.parent == _columnRight))
+				.OrderBy(instance => instance.transform.parent == _columnLeft ? 0 : 1)
+				.ThenBy(instance => instance.transform.GetSiblingIndex())
+				.FirstOrDefault();
 		}
 
 		//-----------------------------------------------------------------------------------------------------------
@@ -245,7 +334,7 @@ namespace Dodad.XSplitscreen.Components
 			var players = ReInput.players.Players;
 			int playerCount = players.Count;
 
-			for(int e = 1; e < playerCount; e++)
+			for (int e = 1; e < playerCount; e++)
 			{
 				if (players[e].controllers.joystickCount == 0 && !players[e].controllers.hasKeyboard)
 					return players[e];
@@ -298,8 +387,12 @@ namespace Dodad.XSplitscreen.Components
 				LocalUserSlot.DeviceIcons = new Dictionary<string, Sprite>();
 
 				foreach (var icon in availableIcons)
-					LocalUserSlot.DeviceIcons.Add(icon.Split("/")
-						.Reverse().First().Replace("device_", "").Replace(".png", ""), Plugin.Resources.LoadAsset<Sprite>(icon));
+				{
+					string fileName = icon.Substring(icon.LastIndexOf('/') + 1);
+					string key = fileName.Replace("device_", "").Replace(".png", "");
+
+					LocalUserSlot.DeviceIcons.Add(key, Plugin.Resources.LoadAsset<Sprite>(icon));
+				}
 			}
 		}
 
@@ -310,7 +403,7 @@ namespace Dodad.XSplitscreen.Components
 		/// </summary>
 		private void OnExit()
 		{
-			if(subscribed)
+			if (subscribed)
 			{
 				ReInput.ControllerConnectedEvent -= OnControllerAddedEvent;
 				subscribed = false;
@@ -325,8 +418,8 @@ namespace Dodad.XSplitscreen.Components
 		/// <param name="args"></param>
 		public void OnControllerAddedEvent(ControllerStatusChangedEventArgs args)
 		{
-			// (specter) Send a reconnecting controller back to its previous slot, so two empty
-			// slots don't race for it.
+			// (specter) Route a reconnecting controller back to its previous slot first - otherwise
+			// two slots with zero controllers would race for whichever reconnects first.
 			var previousSlot = LocalUserSlot.GetLastSlotForController(args.controllerId);
 
 			if (previousSlot?.LocalPlayer != null && previousSlot.LocalPlayer.controllers.Controllers.Count() == 0)
@@ -336,7 +429,7 @@ namespace Dodad.XSplitscreen.Components
 				return;
 			}
 
-			foreach(var slot in LocalUserSlot.Instances)
+			foreach (var slot in LocalUserSlot.Instances)
 			{
 				if (slot.LocalPlayer != null &&
 					slot.LocalPlayer.controllers.Controllers.Count() == 0)
