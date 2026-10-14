@@ -1,16 +1,14 @@
-﻿using MonoMod.Cil;
-using Rewired;
+﻿using Rewired;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using static Dodad.XSplitscreen.Log;
 using UnityEngine;
 using RoR2;
-using Mono.Cecil.Cil;
 using R2API.Utils;
 using RoR2.UI;
-using System.Linq;
 
 namespace Dodad.XSplitscreen
 {
@@ -44,118 +42,73 @@ namespace Dodad.XSplitscreen
 			RoR2.Networking.NetworkManagerSystem.SvMaxPlayersConVar.instance.SetString(playerCount.ToString());
 		}
 
+		private static MethodInfo RunCameraManager_Update_Orig;
+		private static MethodInfo RunCameraManager_Update_ExtraPlayers_Patch;
+
 		private static void UpdateRunCameraManager(bool isSplitscreenEnabled)
 		{
-			try
+			RunCameraManager_Update_Orig ??= typeof(RoR2.RunCameraManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+			RunCameraManager_Update_ExtraPlayers_Patch ??= typeof(HookManager).GetMethod("RunCameraManager_Update_ExtraPlayers", BindingFlags.Static | BindingFlags.NonPublic);
+
+			if (isSplitscreenEnabled)
 			{
-				if (isSplitscreenEnabled)
-				{
-					IL.RoR2.RunCameraManager.Update += RunCameraManager_Update_IL;
-				}
-				else
-				{
-					IL.RoR2.RunCameraManager.Update -= RunCameraManager_Update_IL;
-				}
-			}
-			catch (Exception e)
-			{
-				Log.Print($"Could not {(isSplitscreenEnabled ? "hook" : "unhook")} 'RunCameraManager.Update': {e.Message}", ELogChannel.Error);
-			}
-		}
-
-		private static void RunCameraManager_Update_IL(ILContext il)
-		{
-			ILCursor c = new ILCursor(il);
-
-			if (c.TryGotoNext(
-					x => x.MatchLdloc(16),
-					x => x.MatchCallvirt<RoR2.LocalUser>("get_inputPlayer"),
-					x => x.MatchCallvirt<Rewired.Player>("get_name"),
-					x => x.MatchLdstr("PlayerMain"),
-					x => x.MatchCall<string>("op_Equality")
-				))
-			{
-				// Store name in local 18 for fallback logic
-				c.Index += 3;
-				c.Emit(OpCodes.Dup);
-				c.Emit(OpCodes.Stloc_S, (byte) 18); // local 18 = playerName
-
-				// Check against PlayerMain, Player2, Player3, Player4
-				string[] names = { "PlayerMain", "Player2", "Player3", "Player4" };
-				var stringEquality = typeof(string).GetMethod("op_Equality", new[] { typeof(string), typeof(string) });
-
-				ILLabel continueLabel = c.DefineLabel();
-
-				foreach (var name in names)
-				{
-					c.Emit(OpCodes.Dup);               // [name, name]
-					c.Emit(OpCodes.Ldstr, name);       // [name, name, "PlayerN"]
-					c.Emit(OpCodes.Call, stringEquality); // [name, bool]
-					c.Emit(OpCodes.Brtrue_S, continueLabel); // If true, jump to original logic
-				}
-
-				// If none matched, pop the name and instantiate the fallback prefab
-				c.Emit(OpCodes.Pop);
-				c.Emit(OpCodes.Ldarg_0); // this
-				c.Emit(OpCodes.Ldfld, typeof(RoR2.RunCameraManager).GetField("CharacterSelectUILocal"));
-				c.Emit(OpCodes.Call, typeof(UnityEngine.Object).GetMethod("Instantiate", new[] { typeof(UnityEngine.GameObject) }));
-				c.Emit(OpCodes.Stloc_S, (byte) 17);
-
-				// Set MPEventSystemProvider.eventSystem on the new GameObject
-				// Load gameObject (local 17)
-				c.Emit(OpCodes.Ldloc_S, (byte) 17);
-				// GetComponent<MPEventSystemProvider>()
-				var getComponentGeneric = typeof(UnityEngine.GameObject)
-					.GetMethods()
-					.First(m => m.Name == "GetComponent" && m.IsGenericMethod && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 0)
-					.MakeGenericMethod(typeof(MPEventSystemProvider));
-				c.Emit(OpCodes.Callvirt, getComponentGeneric);
-
-				// Load playerName (local 18)
-				c.Emit(OpCodes.Ldloc_S, (byte) 18);
-
-				// LocalUserManager.FindLocalUserByPlayerName(playerName)
-				var findLocalUserByPlayerName = typeof(LocalUserManager).GetMethod("FindLocalUserByPlayerName", new[] { typeof(string) });
-				c.Emit(OpCodes.Call, findLocalUserByPlayerName);
-
-				// Null check for LocalUser
-				c.Emit(OpCodes.Dup);
-				ILLabel notNull = c.DefineLabel();
-				c.Emit(OpCodes.Brtrue_S, notNull);
-				c.Emit(OpCodes.Pop); // remove null
-				c.Emit(OpCodes.Ldnull);
-				ILLabel afterInputPlayer = c.DefineLabel();
-				c.Emit(OpCodes.Br_S, afterInputPlayer);
-
-				// If not null, get inputPlayer property
-				c.MarkLabel(notNull);
-				var inputPlayerGetter = typeof(RoR2.LocalUser).GetProperty("inputPlayer").GetGetMethod();
-				c.Emit(OpCodes.Callvirt, inputPlayerGetter);
-				c.MarkLabel(afterInputPlayer);
-
-				// MPEventSystem.FindByPlayer(inputPlayer)
-				var findByPlayer = typeof(MPEventSystem).GetMethod("FindByPlayer", new[] { typeof(Rewired.Player) });
-				c.Emit(OpCodes.Call, findByPlayer);
-
-				// Set eventSystem property
-				var eventSystemSetter = typeof(MPEventSystemProvider).GetProperty("eventSystem").GetSetMethod();
-				c.Emit(OpCodes.Callvirt, eventSystemSetter);
-
-				// Jump past the original if/else
-				ILLabel afterInstantiate = c.DefineLabel();
-				c.Emit(OpCodes.Br_S, afterInstantiate);
-
-				// Continue original logic
-				c.MarkLabel(continueLabel);
-
-				// (The original code for PlayerMain/Player2/3/4 continues here)
-
-				c.MarkLabel(afterInstantiate);
-				// (After the fallback logic, execution continues here)
+				Plugin.TryPatch(RunCameraManager_Update_Orig, postfix: RunCameraManager_Update_ExtraPlayers_Patch);
 			}
 			else
 			{
-				Log.Print($"Could not hook '{il.Method.Name}'", ELogChannel.Error);
+				Plugin.TryUnpatch(RunCameraManager_Update_Orig, RunCameraManager_Update_ExtraPlayers_Patch);
+			}
+		}
+
+		private static FieldInfo _runCameraManagerCamerasField;
+		private static FieldInfo _runCameraManagerCanvasesField;
+
+		// (specter) Vanilla only wires a canvas for PlayerMain/Player2/3/4 - mirrors that same
+		// setup for players beyond 4 (this mod clones Rewired players up to Player16).
+		private static void RunCameraManager_Update_ExtraPlayers(RoR2.RunCameraManager __instance)
+		{
+			if (!__instance.isLobby || !RoR2Application.isInLocalMultiPlayer)
+				return;
+
+			_runCameraManagerCamerasField ??= typeof(RoR2.RunCameraManager).GetField("cameras", BindingFlags.Instance | BindingFlags.NonPublic);
+			_runCameraManagerCanvasesField ??= typeof(RoR2.RunCameraManager).GetField("canvases", BindingFlags.Instance | BindingFlags.NonPublic);
+
+			var cameras = (Dictionary<string, CameraRigController>) _runCameraManagerCamerasField.GetValue(__instance);
+			var canvases = (Dictionary<string, Canvas>) _runCameraManagerCanvasesField.GetValue(__instance);
+
+			var localPlayers = NetworkUser.readOnlyLocalPlayersList;
+
+			for (int i = 0; i < localPlayers.Count; i++)
+			{
+				var localUser = localPlayers[i]?.localUser;
+
+				if (localUser?.inputPlayer == null)
+					continue;
+
+				string name = localUser.inputPlayer.name;
+
+				if (name == "PlayerMain" || name == "Player2" || name == "Player3" || name == "Player4")
+					continue; // vanilla already handles these
+
+				if (canvases.TryGetValue(name, out var existingCanvas) && existingCanvas != null)
+					continue;
+
+				if (!cameras.TryGetValue(name, out var cameraRig) || cameraRig == null)
+					continue; // this player's camera isn't ready yet this frame
+
+				var canvasObject = UnityEngine.Object.Instantiate(__instance.CharacterSelectUILocal);
+				var provider = canvasObject.GetComponent<MPEventSystemProvider>();
+				provider.eventSystem = MPEventSystem.FindByPlayer(localUser.inputPlayer);
+
+				var voteInfo = canvasObject.GetComponentInChildren<VoteInfoPanelController>();
+				if (voteInfo != null)
+					voteInfo.voteController = __instance.PreGameController.GetComponent<VoteController>();
+
+				var canvas = canvasObject.GetComponent<Canvas>();
+				canvas.renderMode = RenderMode.ScreenSpaceCamera;
+				canvas.planeDistance = 100 * (i + 1);
+				canvas.worldCamera = cameraRig.uiCam;
+				canvases[name] = canvas;
 			}
 		}
 
@@ -217,7 +170,7 @@ namespace Dodad.XSplitscreen
 				if (user.ParticleSystem != null)
 					return;
 
-				if (__instance.networkUser.localUser.userProfile.fileName == null)
+				if (__instance.networkUser.localUser.userProfile == null || __instance.networkUser.localUser.userProfile.fileName == null)
 					return;
 
 				var trailKey = SplitScreenSettings.GetOrCreateUserModule<TrailsSettingsModule>(__instance.networkUser.localUser.userProfile.fileName).TrailKey;
@@ -356,8 +309,15 @@ namespace Dodad.XSplitscreen
 
 			foreach (var user in localUsers)
 			{
-				if (user.InputPlayer.controllers.joystickCount == 0)
+				// (specter) Exclude keyboard/mouse users (joystickCount==0 for them too) and stop
+				// after the first match, or a reconnecting gamepad lands on whichever eligible user
+				// is last in the list instead of the one that actually needs it.
+				if (user.InputPlayer.controllers.joystickCount == 0 && !user.InputPlayer.controllers.hasKeyboard)
+				{
 					user.InputPlayer.controllers.AddController(args.controller, true);
+
+					return;
+				}
 			}
 		}
 
@@ -365,43 +325,17 @@ namespace Dodad.XSplitscreen
 		{
 			var field = typeof(RunCameraManager).GetField("ScreenLayouts", BindingFlags.Static | BindingFlags.Public);
 
-			Rect[][] rects = new Rect[5][]
-			{
-				new Rect[0],
-				new Rect[1]
-				{
-					new Rect(0f, 0f, 1f, 1f)
-				},
-				new Rect[2]
-				{
-					new Rect(0f, 0.5f, 1f, 0.5f),
-					new Rect(0f, 0f, 1f, 0.5f)
-				},
-				new Rect[3]
-				{
-					new Rect(0f, 0.5f, 1f, 0.5f),
-					new Rect(0f, 0f, 0.5f, 0.5f),
-					new Rect(0.5f, 0f, 0.5f, 0.5f)
-				},
-				new Rect[4]
-				{
-					new Rect(0f, 0.5f, 0.5f, 0.5f),
-					new Rect(0.5f, 0.5f, 0.5f, 0.5f),
-					new Rect(0f, 0f, 0.5f, 0.5f),
-					new Rect(0.5f, 0f, 0.5f, 0.5f)
-				}
-			};
+			Rect[][] rects = new Rect[5][];
+			for (int count = 0; count < rects.Length; count++)
+				rects[count] = LayoutFor(count);
 
 			if (isSplitscreenEnabled)
 			{
 				var localUsers = SplitscreenUserManager.LocalUsers;
 
 				rects = new UnityEngine.Rect[localUsers.Count + 1][];
-				rects[0] = new UnityEngine.Rect[0];
-				rects[1] = new Rect[1]
-				{
-				new Rect(0f, 0f, 1f, 1f)
-				};
+				rects[0] = LayoutFor(0);
+				rects[1] = LayoutFor(1);
 
 				var uRects = new UnityEngine.Rect[localUsers.Count];
 
@@ -429,6 +363,42 @@ namespace Dodad.XSplitscreen
 					Log.Print($"Rect[{e}][{r}] -> {rects[e][r]}");
 				}
 			}
+		}
+
+		// (specter) Vanilla's default layouts for 0-4 players; splitscreen players use their own rects.
+		internal static Rect[] LayoutFor(int count)
+		{
+			if (count <= 0)
+				return new Rect[0];
+
+			if (count == 1)
+				return new[] { new Rect(0f, 0f, 1f, 1f) };
+
+			if (count == 2)
+				return new[] { new Rect(0f, 0.5f, 1f, 0.5f), new Rect(0f, 0f, 1f, 0.5f) };
+
+			if (count == 3)
+			{
+				return new[]
+				{
+					new Rect(0f, 0.5f, 1f, 0.5f),
+					new Rect(0f, 0f, 0.5f, 0.5f),
+					new Rect(0.5f, 0f, 0.5f, 0.5f)
+				};
+			}
+
+			if (count == 4)
+			{
+				return new[]
+				{
+					new Rect(0f, 0.5f, 0.5f, 0.5f),
+					new Rect(0.5f, 0.5f, 0.5f, 0.5f),
+					new Rect(0f, 0f, 0.5f, 0.5f),
+					new Rect(0.5f, 0f, 0.5f, 0.5f)
+				};
+			}
+
+			return new Rect[0];
 		}
 
 		private static MethodInfo PauseStopController_allowMultiplayerPause_Orig;
