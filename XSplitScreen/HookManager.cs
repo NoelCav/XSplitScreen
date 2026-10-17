@@ -28,6 +28,7 @@ namespace Dodad.XSplitscreen
 			UpdateSubscriptions(state);
 			UpdateRunCameraManager(state);
 			UpdatePauseScreenBehaviourHook(state);
+			UpdatePickerPanelHooks(state);
 		}
 
 		private static void ResizePlayerCount(bool state)
@@ -428,6 +429,36 @@ namespace Dodad.XSplitscreen
 			__instance.Network_allowMultiplayerPause = !SplitscreenUserManager.OnlineMode || __0;
 
 			return false;
+		}
+
+		private static MethodInfo PickupPickerPanel_DestroyIt_Orig;
+		private static MethodInfo CraftingPanel_DestroyIt_Orig;
+		private static MethodInfo PickerPanel_DestroyIt_Patch;
+		private static void UpdatePickerPanelHooks(bool isSplitscreenEnabled)
+		{
+			PickupPickerPanel_DestroyIt_Orig ??= typeof(PickupPickerPanel).GetMethod("DestroyIt", BindingFlags.Instance | BindingFlags.NonPublic);
+			CraftingPanel_DestroyIt_Orig ??= typeof(CraftingPanel).GetMethod("DestroyIt", BindingFlags.Instance | BindingFlags.NonPublic);
+			PickerPanel_DestroyIt_Patch ??= typeof(HookManager).GetMethod("PickerPanel_DestroyIt", BindingFlags.Static | BindingFlags.NonPublic);
+
+			if (isSplitscreenEnabled)
+			{
+				Plugin.TryPatch(PickupPickerPanel_DestroyIt_Orig, prefix: PickerPanel_DestroyIt_Patch);
+				Plugin.TryPatch(CraftingPanel_DestroyIt_Orig, prefix: PickerPanel_DestroyIt_Patch);
+			}
+			else
+			{
+				Plugin.TryUnpatch(PickupPickerPanel_DestroyIt_Orig, PickerPanel_DestroyIt_Patch);
+				Plugin.TryUnpatch(CraftingPanel_DestroyIt_Orig, PickerPanel_DestroyIt_Patch);
+			}
+		}
+
+		// (specter) DestroyIt listens to the static scoreboard event, so any player's scoreboard closed
+		// every player's picker. Only let it through for this panel's own HUD, or a pause (timeScale is 0).
+		private static bool PickerPanel_DestroyIt(MonoBehaviour __instance)
+		{
+			var hud = __instance.GetComponentInParent<HUD>();
+
+			return !hud || hud.scoreboardPanel.activeSelf || Time.timeScale == 0f;
 		}
 	}
 }
