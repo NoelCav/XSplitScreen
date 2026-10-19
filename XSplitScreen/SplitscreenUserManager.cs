@@ -1,4 +1,5 @@
-﻿using Rewired;
+﻿using Dodad.XSplitscreen.Components;
+using Rewired;
 using RoR2;
 using RoR2.UI.MainMenu;
 using System;
@@ -150,7 +151,23 @@ namespace Dodad.XSplitscreen
 			LoadLocalUsers();
 			OnStateChange?.Invoke(true);
 			Diagnostics.ReportLocalUsers("splitscreen enabled");
-			TransitionToLobby(gamemode);
+			WaitForEntitlementsThenTransition(gamemode, retriesLeft: 120);
+		}
+
+		// (specter) Vanilla RunCameraManager.Update indexes cameras before entitlements resolve -
+		// waiting here (up to ~2s) shrinks that gap; RunCameraManager_Update_Finalizer covers the rest.
+		private static void WaitForEntitlementsThenTransition(string gamemode, int retriesLeft)
+		{
+			if (!isSplitscreenEnabled)
+				return;
+
+			if (RoR2Application.IsAllUsersEntitlementsUpdated || retriesLeft <= 0)
+			{
+				TransitionToLobby(gamemode);
+				return;
+			}
+
+			ExecuteNextFrame.Invoke(() => WaitForEntitlementsThenTransition(gamemode, retriesLeft - 1));
 		}
 
 		/// <summary>
@@ -205,7 +222,11 @@ namespace Dodad.XSplitscreen
 		{
 			localUsers.Clear();
 
-			var profile = LocalUserManager.localUsersList[0].userProfile;
+			// (specter) Falls back to the platform's default profile (same as vanilla's own
+			// bootstrap) rather than crashing if localUsersList is ever unexpectedly empty here.
+			var profile = LocalUserManager.localUsersList.Count > 0
+				? LocalUserManager.localUsersList[0].userProfile
+				: PlatformSystems.saveSystem.userProfile;
 
 			var playerMain = ReInput.players.GetPlayer("PlayerMain");
 
