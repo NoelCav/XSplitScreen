@@ -29,6 +29,8 @@ namespace Dodad.XSplitscreen
 			UpdateRunCameraManager(state);
 			UpdatePauseScreenBehaviourHook(state);
 			UpdatePickerPanelHooks(state);
+			UpdateLookingGlassHooks(state);
+			UpdateMeditateHook(state);
 		}
 
 		private static void ResizePlayerCount(bool state)
@@ -459,6 +461,74 @@ namespace Dodad.XSplitscreen
 			var hud = __instance.GetComponentInParent<HUD>();
 
 			return !hud || hud.scoreboardPanel.activeSelf || Time.timeScale == 0f;
+		}
+
+		private static MethodInfo ClosePickupPicker_Update_Orig;
+		private static MethodInfo ClosePickupPicker_CloseMenuAfterFrame;
+		private static MethodInfo ClosePickupPicker_Update_Patch;
+		private static void UpdateLookingGlassHooks(bool isSplitscreenEnabled)
+		{
+			if (!BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue("droppod.lookingglass", out var lookingGlass))
+				return;
+
+			if (ClosePickupPicker_Update_Orig == null)
+			{
+				var closePickupPicker = lookingGlass.Instance.GetType().Assembly.GetType("LookingGlass.EscapeToCloseMenu.ClosePickupPicker");
+
+				ClosePickupPicker_Update_Orig = closePickupPicker?.GetMethod("Update", BindingFlags.Instance | BindingFlags.Public);
+				ClosePickupPicker_CloseMenuAfterFrame = closePickupPicker?.GetMethod("CloseMenuAfterFrame", BindingFlags.Instance | BindingFlags.Public);
+				ClosePickupPicker_Update_Patch = typeof(HookManager).GetMethod("ClosePickupPicker_Update", BindingFlags.Static | BindingFlags.NonPublic);
+			}
+
+			if (isSplitscreenEnabled)
+				Plugin.TryPatch(ClosePickupPicker_Update_Orig, prefix: ClosePickupPicker_Update_Patch);
+			else
+				Plugin.TryUnpatch(ClosePickupPicker_Update_Orig, ClosePickupPicker_Update_Patch);
+		}
+
+		// (specter) LookingGlass closes pickers on Input.anyKeyDown, which includes every player's controller.
+		// Only the picker owner's keyboard closes it now, matching its keyboard-only intent.
+		private static bool ClosePickupPicker_Update(MonoBehaviour __instance, Player ___player)
+		{
+			if (___player != null && ___player.controllers.hasKeyboard && ReInput.controllers.Keyboard.GetAnyButtonDown()
+				&& !___player.GetButton(5) && !Input.GetKeyDown(KeyCode.Return) && !Input.GetKeyDown(KeyCode.BackQuote) && !Input.GetKeyDown(KeyCode.F2))
+				ClosePickupPicker_CloseMenuAfterFrame?.Invoke(__instance, null);
+
+			return false;
+		}
+
+		private static MethodInfo Meditate_UpdateUIInputSequence_Orig;
+		private static MethodInfo Meditate_UpdateUIInputSequence_Patch;
+		private static void UpdateMeditateHook(bool isSplitscreenEnabled)
+		{
+			Meditate_UpdateUIInputSequence_Orig ??= typeof(EntityStates.Seeker.Meditate).GetMethod("UpdateUIInputSequence", BindingFlags.Instance | BindingFlags.NonPublic);
+			Meditate_UpdateUIInputSequence_Patch ??= typeof(HookManager).GetMethod("Meditate_UpdateUIInputSequence", BindingFlags.Static | BindingFlags.NonPublic);
+
+			if (isSplitscreenEnabled)
+				Plugin.TryPatch(Meditate_UpdateUIInputSequence_Orig, prefix: Meditate_UpdateUIInputSequence_Patch);
+			else
+				Plugin.TryUnpatch(Meditate_UpdateUIInputSequence_Orig, Meditate_UpdateUIInputSequence_Patch);
+		}
+
+		private static readonly string[] MeditateArrowNames = { "ArrowInput1", "ArrowInput2", "ArrowInput3", "ArrowInput4", "ArrowInput5" };
+
+		// (specter) A spectating player's HUD gets its own copy of the overlay, and vanilla only colours the newest one.
+		private static bool Meditate_UpdateUIInputSequence(EntityStates.Seeker.Meditate __instance, RoR2.HudOverlay.OverlayController ___overlayController)
+		{
+			if (!__instance.isAuthority || ___overlayController == null)
+				return false;
+
+			var color = new Color32(255, 233, 124, 255);
+
+			foreach (var instance in ___overlayController.instancesList)
+			{
+				var childLocator = instance.GetComponent<ChildLocator>();
+
+				for (int i = 0; i < __instance.seekerController.meditationInputStep; i++)
+					childLocator.FindChild(MeditateArrowNames[i]).GetComponent<UnityEngine.UI.Image>().color = color;
+			}
+
+			return false;
 		}
 	}
 }

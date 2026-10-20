@@ -139,8 +139,8 @@ namespace Dodad.XSplitscreen.Components
 			if (freeSlot == null)
 				return false;
 
-			slot.transform.SetParent(userContainer);
-			//slot.transform.localScale = Vector3.one;
+			// (specter) Each display's canvas has its own scale factor, so keeping world scale would shrink or grow the slot.
+			slot.transform.SetParent(userContainer, false);
 
 			if (transform.childCount == MAX_USERS)
 				Destroy(freeSlot.gameObject);

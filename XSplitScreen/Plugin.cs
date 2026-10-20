@@ -20,6 +20,7 @@ namespace Dodad.XSplitscreen
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.DifferentModVersionsAreOk)]
 	[BepInDependency(LanguageAPI.PluginGUID, BepInDependency.DependencyFlags.HardDependency)]
+	[BepInDependency("droppod.lookingglass", BepInDependency.DependencyFlags.SoftDependency)]
 	public class Plugin : BaseUnityPlugin
     {
 		#region Variables
@@ -774,78 +775,26 @@ namespace Dodad.XSplitscreen
 		private static readonly FieldInfo RuleCategoryPopoutInstanceField =
 			typeof(RoR2.UI.RuleCategoryController).GetField("popoutPanelInstance", BindingFlags.Instance | BindingFlags.NonPublic);
 
-		// (specter) Several per-player RoR2 UI panels (the Difficulty/Expansions/Artifacts/Karma
-		// rule grids, the crafting panel) are sized for a full window with no viewport check at
-		// all - scale them down as whole units to fit this player's actual splitscreen viewport.
-		private const float SidebarGridWidthFrac = 0.9f;
-		private const float SidebarGridHeightFrac = 0.22f;
-		private const float FloatingPanelWidthFrac = 0.95f;
-		private const float FloatingPanelHeightFrac = 0.9f;
-
-		private static bool TryGetLocalPlayerViewport(Component component, out float viewportWidth, out float viewportHeight)
-		{
-			viewportWidth = 0f;
-			viewportHeight = 0f;
-
-			if (!SplitscreenUserManager.IsSplitscreenEnabled)
-				return false;
-
-			var locator = component.GetComponent<MPEventSystemLocator>();
-			var profile = locator?.eventSystem?.localUser?.userProfile;
-
-			if (profile?.fileName == null)
-				return false;
-
-			foreach (var user in SplitscreenUserManager.LocalUsers)
-			{
-				if (user.Profile?.fileName == profile.fileName)
-				{
-					viewportWidth = user.CameraRect.width * Screen.width;
-					viewportHeight = user.CameraRect.height * Screen.height;
-					return true;
-				}
-			}
-
-			return false;
-		}
-
+		// (specter) The rule grids, their popouts and the crafting panel are sized for a full window, so fit them to each player's viewport.
 		private static void RuleCategoryController_SetupGridVoteDisplay(RoR2.UI.RuleCategoryController __instance)
 		{
-			if (!TryGetLocalPlayerViewport(__instance, out float viewportWidth, out float viewportHeight))
-				return;
-
-			ScaleToFitViewport(__instance.voteResultGridContainer, viewportWidth * SidebarGridWidthFrac, viewportHeight * SidebarGridHeightFrac);
-
-			var popoutPanelInstance = RuleCategoryPopoutInstanceField?.GetValue(__instance) as HGPopoutPanel;
-			ScaleToFitViewport(popoutPanelInstance?.transform as RectTransform, viewportWidth * FloatingPanelWidthFrac, viewportHeight * FloatingPanelHeightFrac);
+			AddFitToViewport(__instance.voteResultGridContainer, 0.9f, 0.22f);
+			AddFitToViewport((RuleCategoryPopoutInstanceField?.GetValue(__instance) as HGPopoutPanel)?.transform, 0.95f, 0.9f);
 		}
 
-		// (specter) CraftingPanel.Awake sets GridLayoutGroup.constraintCount straight off
-		// slotCount with no viewport check, the same unbounded-grid shape as the rule panels above.
 		private static void CraftingPanel_Awake(RoR2.UI.CraftingPanel __instance)
 		{
-			if (!TryGetLocalPlayerViewport(__instance, out float viewportWidth, out float viewportHeight))
-				return;
-
-			ScaleToFitViewport(__instance.transform as RectTransform, viewportWidth * FloatingPanelWidthFrac, viewportHeight * FloatingPanelHeightFrac);
+			AddFitToViewport(__instance.transform, 0.95f, 0.9f);
 		}
 
-		private static void ScaleToFitViewport(RectTransform target, float maxWidth, float maxHeight)
+		private static void AddFitToViewport(Transform target, float widthFraction, float heightFraction)
 		{
-			if (target == null)
+			if (target == null || target.GetComponent<FitToViewport>())
 				return;
 
-			float width = target.rect.width;
-			float height = target.rect.height;
-
-			if (width <= 0 || height <= 0)
-				return;
-
-			const float minScale = 0.5f; // floor so content doesn't shrink past legibility
-
-			float scale = Mathf.Max(minScale, Mathf.Min(1f, Mathf.Min(maxWidth / width, maxHeight / height)));
-
-			target.localScale = Vector3.one * scale;
+			var fit = target.gameObject.AddComponent<FitToViewport>();
+			fit.widthFraction = widthFraction;
+			fit.heightFraction = heightFraction;
 		}
 
 		/// <summary>
