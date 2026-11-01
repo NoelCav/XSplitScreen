@@ -13,20 +13,27 @@ namespace Dodad.XSplitscreen
 		internal static bool DiagnosticsEnabled { get; private set; }
 
 		/// <summary>
+		/// True when the user enabled the Input option (a line for every button press, per player)
+		/// </summary>
+		internal static bool InputEnabled { get; private set; }
+
+		/// <summary>
 		/// Initialize the logger with the plugin log source
 		/// </summary>
 		/// <param name="source"></param>
 		/// <param name="debug">Print Debug channel messages</param>
 		/// <param name="diagnostics">Print Diag messages</param>
-		internal static void Init(ManualLogSource source, bool debug, bool diagnostics)
+		/// <param name="input">Print Input messages (button presses)</param>
+		internal static void Init(ManualLogSource source, bool debug, bool diagnostics, bool input)
 		{
 			Source = source;
 			DebugEnabled = debug;
 			DiagnosticsEnabled = diagnostics;
+			InputEnabled = input;
 		}
 
 		/// <summary>
-		/// Output a message to the console. Debug messages are only printed when enabled in the config.
+		/// Output a message to the console. Debug and Input messages are only printed when enabled in the config.
 		/// </summary>
 		/// <param name="data"></param>
 		/// <param name="channel"></param>
@@ -56,6 +63,10 @@ namespace Dodad.XSplitscreen
 					if (DebugEnabled)
 						Source.LogDebug(data);
 					break;
+				case ELogChannel.Input:
+					if (InputEnabled)
+						Source.LogInfo($"[Input] {data}");
+					break;
 			}
 		}
 
@@ -79,6 +90,7 @@ namespace Dodad.XSplitscreen
 			Error,
 			Fatal,
 			Debug,
+			Input,
 		}
 	}
 }

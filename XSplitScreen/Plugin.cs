@@ -363,7 +363,11 @@ namespace Dodad.XSplitscreen
 			var diagnostics = Singleton.Config.Bind("Logging", "Diagnostics", false,
 				"Print extra information about controllers, players and menus. Turn this on when reporting a bug and include the log file.");
 
-			Log.Init(Singleton.Logger, debug.Value, diagnostics.Value);
+			var input = Singleton.Config.Bind("Log Channels", "Input", false,
+				"Print a line for every button press, with the player, device and event system that received it. " +
+				"Very noisy - only turn this on when reporting an input bug");
+
+			Log.Init(Singleton.Logger, debug.Value, diagnostics.Value, input.Value);
 
 			return true;
 		}

@@ -12,7 +12,8 @@ using UnityEngine.EventSystems;
 namespace Dodad.XSplitscreen
 {
 	/// <summary>
-	/// Extra reports for bug reports. Everything here is inactive unless Logging > Diagnostics is enabled.
+	/// Extra reports for bug reports. Everything here is inactive unless Logging > Diagnostics (or, for the
+	/// button press log, Logging > Input) is enabled.
 	/// </summary>
 	internal static class Diagnostics
 	{
@@ -59,18 +60,28 @@ namespace Dodad.XSplitscreen
 		//-----------------------------------------------------------------------------------------------------------
 
 		/// <summary>
-		/// Apply diagnostics hooks. Does nothing unless Diagnostics is enabled.
+		/// Apply diagnostics hooks. Does nothing unless Diagnostics or Input is enabled.
 		/// </summary>
 		internal static void Initialize()
 		{
-			if (!Log.DiagnosticsEnabled)
+			if (!Log.DiagnosticsEnabled && !Log.InputEnabled)
 				return;
-
-			Log.Diag("Diagnostics enabled");
 
 			var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 			var self = typeof(Diagnostics);
 			var selfFlags = BindingFlags.Static | BindingFlags.NonPublic;
+
+			// Runs for every player's input every frame: gamepad cursor samples (Diagnostics) and button presses (Input)
+			Plugin.TryPatch(typeof(MPInput).GetMethod("Update", flags),
+				postfix: self.GetMethod(nameof(MPInput_Update_Postfix), selfFlags));
+
+			if (Log.InputEnabled)
+				Log.Print("Input logging enabled", Log.ELogChannel.Input);
+
+			if (!Log.DiagnosticsEnabled)
+				return;
+
+			Log.Diag("Diagnostics enabled");
 
 			// R6: which bindings each player ends up with
 			Plugin.TryPatch(typeof(RoR2.LocalUser).GetMethod(nameof(RoR2.LocalUser.ApplyUserProfileBindingsToRewiredPlayer), flags),
@@ -95,10 +106,6 @@ namespace Dodad.XSplitscreen
 				prefix: self.GetMethod(nameof(PickupPickerController_OnDisplayEnd_Prefix), selfFlags));
 			Plugin.TryPatch(typeof(NetworkUIPromptController).GetMethod(nameof(NetworkUIPromptController.SetParticipantMaster), flags),
 				prefix: self.GetMethod(nameof(NetworkUIPromptController_SetParticipantMaster_Prefix), selfFlags));
-
-			// Slow second cursor: how often each gamepad cursor updates and what slows it
-			Plugin.TryPatch(typeof(MPInput).GetMethod("Update", flags),
-				postfix: self.GetMethod(nameof(MPInput_Update_Postfix), selfFlags));
 		}
 
 		/// <summary>
@@ -355,7 +362,11 @@ namespace Dodad.XSplitscreen
 		/// </summary>
 		private static void MPInput_Update_Postfix(MPInput __instance)
 		{
-			if (__instance.eventSystem == null || !__instance.eventSystem.isCursorVisible ||
+			if (Log.InputEnabled)
+				LogButtonPresses(__instance);
+
+			// Slow second cursor: how often each gamepad cursor updates and what slows it
+			if (!Log.DiagnosticsEnabled || __instance.eventSystem == null || !__instance.eventSystem.isCursorVisible ||
 				__instance.eventSystem.currentInputSource != MPEventSystem.InputSource.Gamepad)
 				return;
 
@@ -389,6 +400,46 @@ namespace Dodad.XSplitscreen
 			sample.Updates = sample.SkippedFrames = sample.HoverFrames = 0;
 			sample.Distance = sample.StickTotal = 0f;
 			sample.NextReport = Time.unscaledTime + 1f;
+		}
+
+		/// <summary>
+		/// (specter) One line per button pressed this frame on the Rewired player this MPInput reads, naming the event system
+		/// that received it. If two event systems read the same player (or one reads two), the same press shows up
+		/// twice with different event systems - which is how input bleeding between players gets spotted.
+		/// </summary>
+		private static void LogButtonPresses(MPInput input)
+		{
+			var player = input.player;
+
+			if (player == null || !player.GetAnyButtonDown())
+				return;
+
+			var eventSystem = input.eventSystem;
+			var last = player.controllers.GetLastActiveController();
+
+			string device = last == null ? "unknown device" : $"{last.type} '{last.name}'";
+			string context = $"event system '{(eventSystem ? eventSystem.name : "null")}' " +
+				$"(source {(eventSystem ? eventSystem.currentInputSource.ToString() : "-")}, " +
+				$"cursor visible {(eventSystem ? eventSystem.isCursorVisible.ToString() : "-")})";
+
+			bool anyMapped = false;
+
+			foreach (var action in ReInput.mapping.Actions)
+			{
+				if (player.GetButtonDown(action.id))
+				{
+					anyMapped = true;
+					Log.Print($"'{player.name}' pressed '{action.name}' via {device} -> {context}", Log.ELogChannel.Input);
+				}
+				else if (player.GetNegativeButtonDown(action.id))
+				{
+					anyMapped = true;
+					Log.Print($"'{player.name}' pressed '{action.name}' (negative) via {device} -> {context}", Log.ELogChannel.Input);
+				}
+			}
+
+			if (!anyMapped)
+				Log.Print($"'{player.name}' pressed a button with no mapped action via {device} -> {context}", Log.ELogChannel.Input);
 		}
 
 		private static string GetMovingCursors(MPInput except)
