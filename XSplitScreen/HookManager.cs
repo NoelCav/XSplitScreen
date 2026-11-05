@@ -298,29 +298,82 @@ namespace Dodad.XSplitscreen
 				__instance.currentInputSource = RoR2.UI.MPEventSystem.InputSource.Gamepad;
 		}
 
+		// Input player names whose gamepad dropped out, oldest first
+		private static readonly List<string> playersWaitingForPad = new List<string>();
+		private static readonly Dictionary<string, int> padCounts = new Dictionary<string, int>();
+
 		private static void UpdateSubscriptions(bool isSplitscreenEnabled)
 		{
-			if (isSplitscreenEnabled)
-				ReInput.ControllerConnectedEvent += OnControllerConnected;
-			else
-				ReInput.ControllerConnectedEvent -= OnControllerConnected;
+			ReInput.ControllerConnectedEvent -= OnControllerConnected;
+			ReInput.ControllerDisconnectedEvent -= OnControllerDisconnected;
+			playersWaitingForPad.Clear();
+			padCounts.Clear();
+
+			if (!isSplitscreenEnabled)
+				return;
+
+			ReInput.ControllerConnectedEvent += OnControllerConnected;
+			ReInput.ControllerDisconnectedEvent += OnControllerDisconnected;
+			RecordPadCounts();
 		}
 
+		private static void RecordPadCounts()
+		{
+			foreach (var user in SplitscreenUserManager.LocalUsers)
+			{
+				padCounts[user.InputPlayer.name] = user.InputPlayer.controllers.joystickCount;
+				ControllerOwners.Record(user.InputPlayer);
+			}
+		}
+
+		// (specter) The game strips a pad from its player before this runs, so compare counts to see who lost one
+		private static void OnControllerDisconnected(ControllerStatusChangedEventArgs args)
+		{
+			if (args.controllerType != ControllerType.Joystick)
+				return;
+
+			foreach (var user in SplitscreenUserManager.LocalUsers)
+			{
+				string name = user.InputPlayer.name;
+
+				if (padCounts.TryGetValue(name, out int count) && user.InputPlayer.controllers.joystickCount < count && !playersWaitingForPad.Contains(name))
+					playersWaitingForPad.Add(name);
+			}
+
+			RecordPadCounts();
+		}
+
+		// (specter) The game's own handler runs first and parks any unassigned gamepad on PlayerMain (player 1),
+		// so a reconnecting gamepad has to be taken back for whoever lost theirs
 		private static void OnControllerConnected(ControllerStatusChangedEventArgs args)
 		{
 			if (args.controllerType != ControllerType.Joystick)
 				return;
 
 			var localUsers = SplitscreenUserManager.LocalUsers;
+			string owner = ControllerOwners.GetOwner(args.controller);
+			LocalUser user = owner != null ? SplitscreenUserManager.GetUserByInputName(owner) : null;
 
-			// Already back with a player (e.g. Rewired restored the assignment)
-			if (localUsers.Any(x => x.InputPlayer.controllers.ContainsController(args.controllerType, args.controllerId)))
-				return;
-
-			// Give it to the first gamepad player who has no controller
-			var user = localUsers.FirstOrDefault(x => x.InputPlayer.controllers.joystickCount == 0 && !x.InputPlayer.controllers.hasKeyboard);
+			if (user != null)
+			{
+				playersWaitingForPad.Remove(owner);
+				Log.Diag($"Reconnected gamepad returned to '{owner}' (matched device)");
+			}
+			else if (playersWaitingForPad.Count > 0)
+			{
+				// Device id unknown or changed, so fall back to whoever lost a gamepad first
+				user = SplitscreenUserManager.GetUserByInputName(playersWaitingForPad[0]);
+				playersWaitingForPad.RemoveAt(0);
+				Log.Diag($"Reconnected gamepad returned to '{user?.InputPlayer.name}' (disconnect order)");
+			}
+			else if (!localUsers.Any(x => x.InputPlayer.name != "PlayerMain" && x.InputPlayer.controllers.ContainsController(args.controllerType, args.controllerId)))
+			{
+				// Nobody lost a gamepad, so this is a new one for a gamepad player without a controller
+				user = localUsers.FirstOrDefault(x => x.InputPlayer.controllers.joystickCount == 0 && !x.InputPlayer.controllers.hasKeyboard);
+			}
 
 			user?.InputPlayer.controllers.AddController(args.controller, true);
+			RecordPadCounts();
 		}
 
 		private static void UpdateCameraRects(bool isSplitscreenEnabled)

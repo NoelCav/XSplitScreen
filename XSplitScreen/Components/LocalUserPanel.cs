@@ -92,7 +92,10 @@ namespace Dodad.XSplitscreen.Components
 				Log.Print($"LocalUserPanel.TryAddControllersToSlot: '{panel.name}' adding new player '{freePlayer.name}', slot '{freeSlot.name}' (existing slot is null)");
 
 				foreach(var controller in controllers)
+				{
 					freePlayer.controllers.AddController(controller, !(controller is Keyboard || controller is Mouse));
+					ControllerOwners.Record(controller, freePlayer);
+				}
 
 				freeSlot.LocalPlayer = freePlayer;
 
@@ -336,13 +339,17 @@ namespace Dodad.XSplitscreen.Components
 		/// <param name="args"></param>
 		public void OnControllerAddedEvent(ControllerStatusChangedEventArgs args)
 		{
-			// (specter) Send a reconnecting controller back to its previous slot, so two empty
-			// slots don't race for it.
-			var previousSlot = LocalUserSlot.GetLastSlotForController(args.controllerId);
+			// (specter) Send a reconnecting controller back to its previous slot
+			// Matched by device first, since a reconnecting gamepad can come back with a different controller id
+			string owner = ControllerOwners.GetOwner(args.controller);
+			var previousSlot = (owner != null ? LocalUserSlot.Instances.FirstOrDefault(x => x.LocalPlayer?.name == owner) : null)
+				?? LocalUserSlot.GetLastSlotForController(args.controllerId);
 
+			// (specter) The game has already puts the gamepad on PlayerMain, so it's taken off there too,
+			// or it would also be able to naviagte the main menu.
 			if (previousSlot?.LocalPlayer != null && previousSlot.LocalPlayer.controllers.Controllers.Count() == 0)
 			{
-				previousSlot.LocalPlayer.controllers.AddController(args.controller, false);
+				previousSlot.LocalPlayer.controllers.AddController(args.controller, true);
 
 				return;
 			}
@@ -352,7 +359,8 @@ namespace Dodad.XSplitscreen.Components
 				if (slot.LocalPlayer != null &&
 					slot.LocalPlayer.controllers.Controllers.Count() == 0)
 				{
-					slot.LocalPlayer.controllers.AddController(args.controller, false);
+					slot.LocalPlayer.controllers.AddController(args.controller, true);
+					ControllerOwners.Record(args.controller, slot.LocalPlayer);
 
 					return;
 				}
