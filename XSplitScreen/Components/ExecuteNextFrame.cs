@@ -18,8 +18,9 @@ namespace Dodad.XSplitscreen.Components
 		
 		private void Start()
 		{
-			_action?.Invoke();
+			// (specter) Destroyed first, so a throwing action doesn't leave this object behind
 			Destroy(gameObject);
+			_action?.Invoke();
 		}
 	}
 }
