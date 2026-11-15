@@ -77,21 +77,7 @@ namespace Dodad.XSplitscreen.Components
 			Options.SetMessage(text, color);
 		}
 
-<<<<<<< Updated upstream
 		public override bool CanOpen() => GetValidProfiles(Options.Slot.Profile?.fileName).Length > 0;
-=======
-		// (specter) Runs every frame, so this checks without building the profile list
-		public override bool CanOpen()
-		{
-			string currentProfile = Options.Slot.Profile?.fileName;
-
-			foreach (var profile in PlatformSystems.saveSystem.loadedUserProfiles)
-				if (IsSelectable(profile.Value, currentProfile))
-					return true;
-
-			return false;
-		}
->>>>>>> Stashed changes
 		
 		/// <summary>
 		/// Opens the profile selector interface.
@@ -154,20 +140,10 @@ namespace Dodad.XSplitscreen.Components
 		/// <returns></returns>
 		private string[] GetValidProfiles(string currentProfileFilename)
 		{
-<<<<<<< Updated upstream
-			return _profileKeys = PlatformSystems.saveSystem.loadedUserProfiles.Keys
-				.Where(x =>
-					x == currentProfileFilename ||
-					!_activeProfiles.Contains(x)).ToArray();
-=======
-			// (specter) This is called every frame by CanOpen()/UpdateNavigatorCount(), and
-			// assigning _profileKeys here shrank the array out from under _profileIndex
-			// whenever another slot claimed a profile.
-			return PlatformSystems.saveSystem.loadedUserProfiles.Values
+			return _profileKeys = PlatformSystems.saveSystem.loadedUserProfiles.Values
 				.Where(x => IsSelectable(x, currentProfileFilename))
 				.Select(x => x.fileName)
 				.ToArray();
->>>>>>> Stashed changes
 		}
 
 		// (specter) A profile that failed to load comes back as an unsaveable guest copy, so we don't want to allow it to be selected.
