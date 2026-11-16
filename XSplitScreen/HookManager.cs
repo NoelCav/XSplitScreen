@@ -6,6 +6,9 @@ using System.Reflection;
 using System.Text;
 using static Dodad.XSplitscreen.Log;
 using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
+using UnityEngine.EventSystems;
+using LeTai.Asset.TranslucentImage;
 using RoR2;
 using R2API.Utils;
 using RoR2.UI;
@@ -31,6 +34,8 @@ namespace Dodad.XSplitscreen
 			UpdatePickerPanelHooks(state);
 			UpdateLookingGlassHooks(state);
 			UpdateMeditateHook(state);
+			UpdateTranslucentImageHook(state);
+			UpdateSelectionRedirectHook(state);
 		}
 
 		private static void ResizePlayerCount(bool state)
@@ -245,6 +250,8 @@ namespace Dodad.XSplitscreen
 				if (__instance == null || RunCameraManager.instance == null)
 					return;
 
+				MatchPostProcessing(__instance);
+
 				var field = typeof(RunCameraManager).GetField("cameras", BindingFlags.Instance | BindingFlags.NonPublic);
 				var cameraDict = (Dictionary<string, CameraRigController>) field.GetValue(RunCameraManager.instance);
 				string userName = null;
@@ -273,6 +280,48 @@ namespace Dodad.XSplitscreen
 				if (__instance.skyboxCam != null)
 					__instance.skyboxCam.targetDisplay = targetDisplay;
 			});
+		}
+
+		// (specter) The game applies the anti-aliasing setting to Camera.main only, so players 2+ kept the default
+		private static void MatchPostProcessing(CameraRigController rig)
+		{
+			var sceneCam = rig.sceneCam;
+			var main = Camera.main;
+
+			if (!sceneCam)
+				return;
+
+			sceneCam.TryGetComponent<PostProcessLayer>(out var layer);
+
+			if (layer && main && main != sceneCam && main.TryGetComponent<PostProcessLayer>(out var mainLayer))
+				layer.antialiasingMode = mainLayer.antialiasingMode;
+
+			// (specter) Every camera rig brings a generic global volume that ties with the stage's own at priority 0,
+			// and each extra rig reshuffled the tie, so some players lost the stage's bloom. The stage now always wins.
+			foreach (var volume in UnityEngine.Object.FindObjectsOfType<PostProcessVolume>())
+				if (volume.isGlobal && volume.priority == 0f && volume.name == "GlobalPostProcessVolume")
+					volume.priority = -1f;
+
+			if (!Log.DiagnosticsEnabled)
+				return;
+
+			string volumes = "";
+
+			if (layer)
+			{
+				var activeVolumes = new List<PostProcessVolume>();
+				PostProcessManager.instance.GetActiveVolumes(layer, activeVolumes);
+
+				foreach (var volume in activeVolumes)
+				{
+					string bloom = volume.profileRef.TryGetSettings<Bloom>(out var settings) ? $"bloom {(settings.active ? settings.intensity.value.ToString() : "off")}" : "no bloom";
+					string owner = volume.GetComponentInParent<CameraRigController>() ? "camera rig" : volume.transform.root.name;
+					volumes += $"\n    - '{volume.name}' (on {owner}) global {volume.isGlobal}, priority {volume.priority}, {bloom}";
+				}
+			}
+
+			Log.Diag($"Camera '{sceneCam.name}' (rig {rig.GetInstanceID()}, Camera.main '{(main ? main.name : "none")}', is main {sceneCam == main}): HDR {sceneCam.allowHDR}, MSAA {sceneCam.allowMSAA}, " +
+				(layer ? $"post-process enabled {layer.enabled}, AA {layer.antialiasingMode}, volume mask {layer.volumeLayer.value}, trigger '{(layer.volumeTrigger ? layer.volumeTrigger.name : "none")}'" : "no post-process layer") + volumes);
 		}
 
 		private static MethodInfo MPEventSystem_OnLastActiveControllerChanged_Orig;
@@ -580,6 +629,70 @@ namespace Dodad.XSplitscreen
 					childLocator.FindChild(MeditateArrowNames[i]).GetComponent<UnityEngine.UI.Image>().color = color;
 			}
 
+			return false;
+		}
+
+		private static MethodInfo TranslucentImage_Start_Orig;
+		private static MethodInfo TranslucentImage_Start_Patch;
+		private static void UpdateTranslucentImageHook(bool isSplitscreenEnabled)
+		{
+			TranslucentImage_Start_Orig ??= typeof(TranslucentImage).GetMethod("Start", BindingFlags.Instance | BindingFlags.NonPublic);
+			TranslucentImage_Start_Patch ??= typeof(HookManager).GetMethod("TranslucentImage_Start", BindingFlags.Static | BindingFlags.NonPublic);
+
+			if (isSplitscreenEnabled)
+				Plugin.TryPatch(TranslucentImage_Start_Orig, postfix: TranslucentImage_Start_Patch);
+			else
+				Plugin.TryUnpatch(TranslucentImage_Start_Orig, TranslucentImage_Start_Patch);
+		}
+
+		// (specter) Blurred panels (the Command window) find their source with FindObjectOfType, which is
+		// player 1's camera, so everyone saw player 1's view behind the menu. Use the panel's own player's camera.
+		private static void TranslucentImage_Start(TranslucentImage __instance)
+		{
+			var hud = __instance.GetComponentInParent<HUD>();
+			var sceneCam = hud && hud.cameraRigController ? hud.cameraRigController.sceneCam : null;
+
+			if (!sceneCam)
+				return;
+
+			if (!sceneCam.TryGetComponent<TranslucentImageSource>(out var source) && __instance.source)
+			{
+				// Only one camera carries a source, so give this one a copy of its settings
+				source = sceneCam.gameObject.AddComponent<TranslucentImageSource>();
+				JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(__instance.source), source);
+				Log.Diag($"Added a blur source to '{sceneCam.name}'");
+			}
+
+			if (source)
+				__instance.source = source;
+		}
+
+		private static MethodInfo EventSystem_SetSelectedGameObject_Orig;
+		private static MethodInfo EventSystem_SetSelectedGameObject_Patch;
+		private static void UpdateSelectionRedirectHook(bool isSplitscreenEnabled)
+		{
+			EventSystem_SetSelectedGameObject_Orig ??= typeof(EventSystem).GetMethod("SetSelectedGameObject", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(GameObject) }, null);
+			EventSystem_SetSelectedGameObject_Patch ??= typeof(HookManager).GetMethod("EventSystem_SetSelectedGameObject", BindingFlags.Static | BindingFlags.NonPublic);
+
+			if (isSplitscreenEnabled)
+				Plugin.TryPatch(EventSystem_SetSelectedGameObject_Orig, prefix: EventSystem_SetSelectedGameObject_Patch);
+			else
+				Plugin.TryUnpatch(EventSystem_SetSelectedGameObject_Orig, EventSystem_SetSelectedGameObject_Patch);
+		}
+
+		// (specter) Mods like LookingGlass select through EventSystem.current, which can be another player's event
+		// system, leaving its tooltip stuck on someone else's menu. Hand the selection to the button's own player.
+		private static bool EventSystem_SetSelectedGameObject(EventSystem __instance, GameObject __0)
+		{
+			if (!__0)
+				return true;
+
+			var owner = __0.GetComponentInParent<MPEventSystemLocator>()?.eventSystem;
+
+			if (!owner || owner == __instance)
+				return true;
+
+			owner.SetSelectedGameObject(__0);
 			return false;
 		}
 	}
